@@ -1,0 +1,83 @@
+# =====================
+# Node / Frontend
+# =====================
+node_modules/
+dist/
+dist-ssr/
+.vite/
+
+# Vite / React env files
+.env
+.env.local
+.env.development
+.env.production
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =====================
+# Python / Backend
+# =====================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python build artifacts
+build/
+develop-eggs/
+dist/
+eggs/
+*.egg-info/
+
+# =====================
+# FastAPI / Runtime
+# =====================
+*.log
+*.sqlite
+*.db
+
+# =====================
+# OS junk
+# =====================
+.DS_Store
+Thumbs.db
+
+# =====================
+# Editor junk
+# =====================
+.vscode/
+.idea/
+
+# =====================
+# Media / Temp Files
+# =====================
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.mp4
+*.mkv
+*.webm
+/tmp/
+temp/
+
+# =====================
+# Model / AI artifacts
+# =====================
+*.pt
+*.pth
+*.onnx
+*.npz
+
+# =====================
+# History / Storage (ignore runtime data)
+# =====================
+backend/storage/history.json
