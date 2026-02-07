@@ -27,7 +27,9 @@ export default function TimelineControls({
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [showManualControls, setShowManualControls] = useState(false);
+  const [showShapeDropdown, setShowShapeDropdown] = useState(false);
   const timelineRef = useRef(null);
+  const shapeDropdownRef = useRef(null);
 
   const shapes = [
     { id: 'jellyfish', label: 'Jellyfish', icon: '🪼' },
@@ -80,6 +82,22 @@ export default function TimelineControls({
     }
   }, [isDragging]);
 
+  // Close shape dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (shapeDropdownRef.current && !shapeDropdownRef.current.contains(event.target)) {
+        setShowShapeDropdown(false);
+      }
+    };
+
+    if (showShapeDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showShapeDropdown]);
+
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   // Dynamic timestamps from backend structural analysis
@@ -104,21 +122,43 @@ export default function TimelineControls({
         {showManualControls && (
           <div className="manual-controls-dropdown">
             <div className="dropdown-header">Shape Selection</div>
-            <div className="shape-grid">
-              {shapes.map(shape => (
-                <button
-                  key={shape.id}
-                  className={`shape-button ${currentShape === shape.id ? 'active' : ''}`}
-                  onClick={() => {
-                    onShapeChange(shape.id);
-                    setShowManualControls(false);
-                  }}
-                  title={shape.label}
-                >
-                  <span className="shape-icon">{shape.icon}</span>
-                  <span className="shape-label">{shape.label}</span>
-                </button>
-              ))}
+            <div className="custom-dropdown" ref={shapeDropdownRef}>
+              <button
+                className="dropdown-trigger"
+                onClick={() => setShowShapeDropdown(!showShapeDropdown)}
+              >
+                <div className="dropdown-value">
+                  {currentShape ? (
+                    <>
+                      <span className="shape-icon">{shapes.find(s => s.id === currentShape)?.icon}</span>
+                      <span className="shape-label">{shapes.find(s => s.id === currentShape)?.label}</span>
+                    </>
+                  ) : (
+                    <span className="shape-label">Select a shape</span>
+                  )}
+                </div>
+                <svg className="dropdown-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="2 4 6 8 10 4" />
+                </svg>
+              </button>
+
+              {showShapeDropdown && (
+                <div className="dropdown-menu">
+                  {shapes.map(shape => (
+                    <button
+                      key={shape.id}
+                      className={`dropdown-item ${currentShape === shape.id ? 'active' : ''}`}
+                      onClick={() => {
+                        onShapeChange(shape.id);
+                        setShowShapeDropdown(false);
+                      }}
+                    >
+                      <span className="shape-icon">{shape.icon}</span>
+                      <span className="shape-label">{shape.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="dropdown-header" style={{ marginTop: '16px' }}>Audio EQ</div>
@@ -223,10 +263,9 @@ export default function TimelineControls({
                 <button
                   key={env.id}
                   className={`shape-button ${currentEnvironment === env.id ? 'active' : ''}`}
-                  onClick={() => {
-                    console.log('[v0] TimelineControls: manual environment change ->', env.id);
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onEnvironmentChange(env.id);
-                    setShowManualControls(false);
                   }}
                   title={env.label}
                 >
@@ -241,9 +280,9 @@ export default function TimelineControls({
             <div className="dropdown-header" style={{ marginTop: '16px' }}>Controls</div>
             <button
               className="reset-button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 onReset();
-                setShowManualControls(false);
               }}
               title="Reset visualizer to initial state"
             >
