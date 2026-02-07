@@ -20,6 +20,7 @@ function App() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [analyser, setAnalyser] = useState(null);
   const [currentShape, setCurrentShape] = useState('jellyfish');
+  const [journeyEnabled, setJourneyEnabled] = useState(true);
   
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -142,6 +143,7 @@ function App() {
           analyser={analyser}
           currentTime={currentTime}
           manualShape={currentShape}
+          journeyEnabled={journeyEnabled}
         />
       </div>
 
@@ -207,10 +209,12 @@ function App() {
         isPlaying={isPlaying}
         playbackSpeed={playbackSpeed}
         currentShape={currentShape}
+        journeyEnabled={journeyEnabled}
         onPlayPause={handlePlayPause}
         onSeek={handleSeek}
         onSpeedChange={handleSpeedChange}
         onShapeChange={setCurrentShape}
+        onJourneyToggle={setJourneyEnabled}
       />
     </div>
   );

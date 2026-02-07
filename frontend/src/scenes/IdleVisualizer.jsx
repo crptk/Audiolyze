@@ -297,9 +297,14 @@ export default function IdleVisualizer({
       const hue = params.colorScheme.hueBase - audioState.vocalEnergy * 0.4;
       const lightness = params.colorScheme.brightness + audioState.beatHit * 0.3;
       
-      materialRef.current.color
-        .setHSL(hue, params.colorScheme.saturation, lightness)
-        .multiplyScalar(1.8 + audioState.vocalEnergy * 1.5 + audioState.beatHit * 5.0);
+      const intensity =
+        1.4 +
+        audioState.vocalEnergy * 1.2 +
+        audioState.beatHit * 2.2;
+
+    materialRef.current.color
+      .setHSL(hue, params.colorScheme.saturation, lightness)
+      .multiplyScalar(THREE.MathUtils.clamp(intensity, 1.0, 3.2));
     }
 
     // Rotation: Driven by vocal energy (particle movement)

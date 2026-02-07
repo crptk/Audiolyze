@@ -14,7 +14,9 @@ export default function TimelineControls({
   onSeek,
   onSpeedChange,
   onShapeChange,
-  currentShape
+  currentShape,
+  onJourneyToggle,
+  journeyEnabled
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [showManualControls, setShowManualControls] = useState(false);
@@ -107,6 +109,22 @@ export default function TimelineControls({
                 </button>
               ))}
             </div>
+            
+            <div className="dropdown-header" style={{ marginTop: '16px' }}>Journey Mode</div>
+            <button
+              className={`journey-toggle ${journeyEnabled ? 'active' : ''}`}
+              onClick={() => {
+                onJourneyToggle(!journeyEnabled);
+              }}
+              title={journeyEnabled ? 'Disable Journey Mode' : 'Enable Journey Mode'}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                <path d="M2 17l10 5 10-5"/>
+                <path d="M2 12l10 5 10-5"/>
+              </svg>
+              <span>{journeyEnabled ? 'Journey Mode ON' : 'Journey Mode OFF'}</span>
+            </button>
           </div>
         )}
       </div>

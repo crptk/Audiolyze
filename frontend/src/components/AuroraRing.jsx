@@ -85,7 +85,7 @@ export default function AuroraRing({
       const floor = 0.02;
       let b = Math.max(0, bassStrength - floor - 0.4);
       b = THREE.MathUtils.clamp(b / (1.0 - floor), 0, 1);
-
+        
       const energy = b * 3.0;
       const barHeight = energy * 2.5;
 

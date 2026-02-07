@@ -1,2 +1,8 @@
 TO RUN BACKEND:
 uvicorn main:app --reload
+
+
+TODO:
+Figure out prize tracks
+Figure out vizualiser stuff
+Figure out everything
