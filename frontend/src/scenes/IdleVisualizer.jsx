@@ -69,10 +69,12 @@ export default function IdleVisualizer({
   isPlaying = false,
   onBeatUpdate = null,
   currentTime = 0,
-  manualShape = null
+  manualShape = null,
+  audioTuning = null,
 }) {
   // Ensure aiParams is always valid
   const params = aiParams || DEFAULT_AI_PARAMS;
+  const tuning = audioTuning || { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 };
   
   const pointsRef = useRef();
   const materialRef = useRef();
@@ -192,11 +194,12 @@ export default function IdleVisualizer({
     if (audioAnalyzerRef.current && isPlaying) {
       const audioData = audioAnalyzerRef.current.analyze();
       
-      // Use smoothed values with attack/decay for better visual response
-      const bass = audioData.bass_att;
-      const mid = audioData.mid_att;
-      const treb = audioData.treb_att;
-      const vol = audioData.vol_att;
+      // Apply tuning multipliers to audio bands
+      const sens = tuning.sensitivity;
+      const bass = audioData.bass_att * tuning.bass * sens;
+      const mid = audioData.mid_att * tuning.mid * sens;
+      const treb = audioData.treb_att * tuning.treble * sens;
+      const vol = audioData.vol_att * sens;
       
       // Calculate vocal energy from mid and treble
       const vocalEnergy = (mid * 1.5 + treb) / 2.5;
@@ -208,23 +211,22 @@ export default function IdleVisualizer({
         if (currentBeat && Math.abs(currentTime - currentBeat.time) < 0.05) {
           // Trigger beat at timestamp with strength from librosa
           const strength = currentBeat.strength || 1.0;
-          audioState.beatHit = 4.0 + strength * 4.0;
-          audioState.expansion = 2.5 + strength * 2.5;
-          console.log('[v0] Beat timestamp hit!', currentBeat.time.toFixed(2), 's, strength:', strength.toFixed(2));
+          audioState.beatHit = (4.0 + strength * 4.0) * tuning.bass;
+          audioState.expansion = (2.5 + strength * 2.5) * tuning.bass;
           lastBeatIndexRef.current++;
         }
       }
 
       // Update vocal-driven parameters (smooth transitions)
-      audioState.vocalEnergy = THREE.MathUtils.lerp(audioState.vocalEnergy, vocalEnergy, 0.2);
-      audioState.vocalIntensity = THREE.MathUtils.lerp(audioState.vocalIntensity, mid, 0.25);
-      audioState.particleSpeed = THREE.MathUtils.lerp(audioState.particleSpeed, vocalEnergy, 0.15);
-      audioState.turbulence = THREE.MathUtils.lerp(audioState.turbulence, vocalEnergy * 1.5, 0.2);
+      audioState.vocalEnergy = THREE.MathUtils.lerp(audioState.vocalEnergy, vocalEnergy, 0.25);
+      audioState.vocalIntensity = THREE.MathUtils.lerp(audioState.vocalIntensity, mid, 0.3);
+      audioState.particleSpeed = THREE.MathUtils.lerp(audioState.particleSpeed, vocalEnergy, 0.2);
+      audioState.turbulence = THREE.MathUtils.lerp(audioState.turbulence, vocalEnergy * 1.5, 0.25);
 
-      // Update beat-driven parameters (fast decay for next beat)
-      audioState.bassStrength = THREE.MathUtils.lerp(audioState.bassStrength, bass, 0.35);
-      audioState.beatHit = THREE.MathUtils.lerp(audioState.beatHit, 0, 0.12);
-      audioState.expansion = THREE.MathUtils.lerp(audioState.expansion, 0, 0.10);
+      // Update beat-driven parameters - FAST decay so beats are sharp and distinct
+      audioState.bassStrength = THREE.MathUtils.lerp(audioState.bassStrength, bass, 0.4);
+      audioState.beatHit *= 0.82; // Fast exponential decay (~180ms to halve)
+      audioState.expansion *= 0.85; // Fast exponential decay (~200ms to halve)
     } else {
       // Idle state - default gentle flow
       audioState.vocalEnergy = THREE.MathUtils.lerp(audioState.vocalEnergy, 0.05, 0.08);

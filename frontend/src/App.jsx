@@ -22,6 +22,12 @@ function App() {
   const [analyser, setAnalyser] = useState(null);
   const [currentShape, setCurrentShape] = useState(null);
   const [journeyEnabled, setJourneyEnabled] = useState(true);
+  const [audioTuning, setAudioTuning] = useState({
+    bass: 1.0,
+    mid: 1.0,
+    treble: 1.0,
+    sensitivity: 1.0,
+  });
   
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -195,6 +201,7 @@ function App() {
           manualShape={currentShape}
           journeyEnabled={journeyEnabled}
           resetRef={resetVisualizerRef}
+          audioTuning={audioTuning}
         />
       </div>
 
@@ -267,6 +274,8 @@ function App() {
         onShapeChange={setCurrentShape}
         onJourneyToggle={setJourneyEnabled}
         onReset={handleReset}
+        audioTuning={audioTuning}
+        onAudioTuningChange={setAudioTuning}
       />
     </div>
   );

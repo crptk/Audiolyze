@@ -342,6 +342,75 @@
   flex: 1;
 }
 
+/* Audio Tuning Sliders */
+.audio-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.audio-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.audio-slider-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  min-width: 80px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.audio-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.audio-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  cursor: grab;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: transform 0.1s ease;
+}
+
+.audio-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.2);
+}
+
+.audio-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  cursor: grab;
+  border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.audio-slider-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
 /* Journey Mode Toggle */
 .journey-toggle {
   display: flex;
@@ -375,6 +444,37 @@
 }
 
 .journey-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Reset Button */
+.reset-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(255, 110, 110, 0.1);
+  border: 1px solid rgba(255, 110, 110, 0.2);
+  border-radius: 12px;
+  color: rgba(255, 150, 150, 0.9);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.reset-button:hover {
+  background: rgba(255, 110, 110, 0.15);
+  border-color: rgba(255, 110, 110, 0.3);
+  color: rgba(255, 180, 180, 1);
+  transform: translateY(-2px);
+}
+
+.reset-button svg {
   width: 20px;
   height: 20px;
 }

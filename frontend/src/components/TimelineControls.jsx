@@ -17,7 +17,9 @@ export default function TimelineControls({
   currentShape,
   onJourneyToggle,
   journeyEnabled,
-  onReset
+  onReset,
+  audioTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
+  onAudioTuningChange,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [showManualControls, setShowManualControls] = useState(false);
@@ -117,6 +119,35 @@ export default function TimelineControls({
               ))}
             </div>
             
+            <div className="dropdown-header" style={{ marginTop: '16px' }}>Audio Tuning</div>
+            <div className="audio-sliders">
+              {[
+                { key: 'bass', label: 'Bass', min: 0, max: 3, step: 0.1 },
+                { key: 'mid', label: 'Mid', min: 0, max: 3, step: 0.1 },
+                { key: 'treble', label: 'Treble', min: 0, max: 3, step: 0.1 },
+                { key: 'sensitivity', label: 'Sensitivity', min: 0.1, max: 3, step: 0.1 },
+              ].map(slider => (
+                <div key={slider.key} className="audio-slider-row">
+                  <label className="audio-slider-label">{slider.label}</label>
+                  <input
+                    type="range"
+                    className="audio-slider"
+                    min={slider.min}
+                    max={slider.max}
+                    step={slider.step}
+                    value={audioTuning[slider.key]}
+                    onChange={(e) => {
+                      onAudioTuningChange({
+                        ...audioTuning,
+                        [slider.key]: parseFloat(e.target.value),
+                      });
+                    }}
+                  />
+                  <span className="audio-slider-value">{audioTuning[slider.key].toFixed(1)}</span>
+                </div>
+              ))}
+            </div>
+
             <div className="dropdown-header" style={{ marginTop: '16px' }}>Journey Mode</div>
             <button
               className={`journey-toggle ${journeyEnabled ? 'active' : ''}`}

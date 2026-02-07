@@ -18,7 +18,8 @@ export default function VisualizerScene({
   manualShape = null,
   journeyEnabled = true,
   mouseSensitivity = 0.5, // 0.1 to 2.0
-  resetRef = null
+  resetRef = null,
+  audioTuning = null
 }) {
   const [beatData, setBeatData] = useState({ beatHit: 0, expansion: 0 });
   const [journeyActive, setJourneyActive] = useState(false);
@@ -133,6 +134,7 @@ export default function VisualizerScene({
           currentTime={currentTime}
           manualShape={manualShape}
           onBeatUpdate={setBeatData}
+          audioTuning={audioTuning}
         />
       </group>
 

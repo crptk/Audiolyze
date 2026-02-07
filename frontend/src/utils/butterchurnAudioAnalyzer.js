@@ -93,13 +93,18 @@ export class ButterchurnAudioAnalyzer {
       rate = this.adjustRateToFPS(rate, 30.0, effectiveFPS);
       this.longAvg[i] = this.longAvg[i] * rate + this.imm[i] * (1 - rate);
       
-      // Calculate relative values
-      if (this.longAvg[i] < 0.001) {
-        this.val[i] = 1.0;
-        this.att[i] = 1.0;
+      // Calculate relative values with noise floor
+      // When audio is quiet, the longAvg drops and even tiny sounds produce
+      // huge ratios (e.g. 0.5 / 0.01 = 50). A noise floor prevents this.
+      const NOISE_FLOOR = 200; // Minimum longAvg to avoid over-sensitivity
+      if (this.longAvg[i] < NOISE_FLOOR) {
+        // Scale down proportionally when below noise floor
+        const scale = this.longAvg[i] / NOISE_FLOOR;
+        this.val[i] = (this.imm[i] / NOISE_FLOOR) * scale;
+        this.att[i] = (this.avg[i] / NOISE_FLOOR) * scale;
       } else {
-        this.val[i] = this.imm[i] / this.longAvg[i]; // Immediate / baseline
-        this.att[i] = this.avg[i] / this.longAvg[i]; // Smoothed / baseline
+        this.val[i] = this.imm[i] / this.longAvg[i];
+        this.att[i] = this.avg[i] / this.longAvg[i];
       }
     }
     
