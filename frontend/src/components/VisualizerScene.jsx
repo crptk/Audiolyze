@@ -9,8 +9,8 @@ import StarField from './StarField';
 import AuroraRing from './AuroraRing';
 import JourneyMode from './JourneyMode';
 
-export default function VisualizerScene({ 
-  audioFile = null, 
+export default function VisualizerScene({
+  audioFile = null,
   aiParams = null,
   isPlaying = false,
   analyser = null,
@@ -27,11 +27,9 @@ export default function VisualizerScene({
   const visualizerGroupRef = useRef();
   const cameraRef = useRef();
   const controlsRef = useRef();
-  
-  // Single journey sequence (AI will provide this later)
-  const JOURNEY_TIMESTAMPS = [
-    { time: 45, duration: 25 }, // One journey at 45s lasting 25 seconds
-  ];
+
+  // Journey from backend structural analysis (highest-energy sustained section)
+  const journeys = aiParams?.journeys || [];
 
   // Expose reset function to parent
   useEffect(() => {
@@ -43,7 +41,7 @@ export default function VisualizerScene({
           controlsRef.current.object.position.set(0, 0, 35);
           controlsRef.current.update();
         }
-        
+
         // Reset journey state
         setJourneyActive(false);
         setJourneyProgress(0);
@@ -51,34 +49,37 @@ export default function VisualizerScene({
     }
   }, [resetRef]);
 
-  // Check for journey mode triggers
+  // Check for journey mode triggers using backend-detected journey
   useEffect(() => {
-    if (!isPlaying || !journeyEnabled) {
+    if (!isPlaying || !journeyEnabled || journeys.length === 0) {
       if (journeyActive) {
         setJourneyActive(false);
         setJourneyProgress(0);
       }
       return;
     }
-    
-    const journey = JOURNEY_TIMESTAMPS[0];
-    if (!journey) return;
-    
-    const timeInJourney = currentTime - journey.time;
-    
-    if (timeInJourney >= 0 && timeInJourney < journey.duration) {
-      if (!journeyActive) {
-        setJourneyActive(true);
-      }
-      // Linear progress 0-1, fade logic handled inside JourneyMode
-      const progress = timeInJourney / journey.duration;
+
+    const activeJourney = journeys.find(
+      j => currentTime >= j.start && currentTime <= j.end
+    );
+
+    if (activeJourney) {
+      const dur = activeJourney.duration ?? (activeJourney.end - activeJourney.start);
+      const progress = (currentTime - activeJourney.start) / dur;
+
+      setJourneyActive(true);
       setJourneyProgress(progress);
-    } else if (timeInJourney >= journey.duration && journeyActive) {
+    } else if (journeyActive) {
       setJourneyActive(false);
       setJourneyProgress(0);
     }
-  }, [currentTime, isPlaying, journeyEnabled, journeyActive]);
-
+  }, [
+    currentTime,
+    isPlaying,
+    journeyEnabled,
+    journeys,
+    journeyActive
+  ]);
   return (
     <Canvas
       camera={{ position: [0, 0, 35], fov: 60 }}
@@ -89,7 +90,7 @@ export default function VisualizerScene({
       }}
     >
       {/* Smooth camera controls with momentum */}
-      <OrbitControls 
+      <OrbitControls
         ref={controlsRef}
         enableDamping={true}
         dampingFactor={0.05}
@@ -105,7 +106,7 @@ export default function VisualizerScene({
       <StarField beatHit={beatData.beatHit} expansion={beatData.expansion} />
 
       {/* Journey Mode - Flying particles and light streams */}
-      <JourneyMode 
+      <JourneyMode
         isActive={journeyActive}
         journeyProgress={journeyProgress}
         hue={beatData.hue ?? 0.78}
@@ -116,8 +117,8 @@ export default function VisualizerScene({
       {/* Visualizer group (can move during journey) */}
       <group ref={visualizerGroupRef}>
         {/* Aurora Borealis Ring (beat-reactive aura) */}
-        <AuroraRing 
-          beatHit={beatData.beatHit} 
+        <AuroraRing
+          beatHit={beatData.beatHit}
           bassStrength={beatData.bassStrength || 0}
           expansion={beatData.expansion}
           hue={beatData.hue ?? 0.78}
@@ -126,7 +127,7 @@ export default function VisualizerScene({
         />
 
         {/* Particle Visualizer */}
-        <IdleVisualizer 
+        <IdleVisualizer
           audioData={audioFile}
           analyser={analyser}
           aiParams={aiParams}

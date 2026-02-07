@@ -13,6 +13,8 @@ function App() {
   const [audioFile, setAudioFile] = useState(null);
   const [aiParams, setAiParams] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
   
   // Audio playback state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -43,9 +45,8 @@ function App() {
 
   const handleFileSelect = async (file) => {
     if (file && (file.type === 'audio/mpeg' || file.type === 'video/mp4' || file.name.endsWith('.m4v'))) {
-      console.log('[v0] Audio file loaded:', file.name);
-      setAudioFile(file);
-      setAudioLoaded(true);
+      setIsLoading(true);
+      setLoadingMessage('Preparing audio...');
 
       // Setup audio element
       const audioUrl = URL.createObjectURL(file);
@@ -102,16 +103,29 @@ function App() {
       audioContextRef.current = audioContext;
       audioFiltersRef.current = { bassFilter, midFilter, trebleFilter, gainNode };
       setAnalyser(analyserNode);
-      
-      console.log('[v0] Analyser created and set:', analyserNode);
+
+      setLoadingMessage('Analyzing with AI...');
 
       try {
         const params = await fetchAIParams(file);
-        console.log('[v0] AI Params received:', params);
+        console.log("[v0] App.jsx received aiParams:", JSON.stringify({ journey: params.journey, shapeChanges: params.shapeChanges, beatCount: params.beats?.length }));
+        setLoadingMessage('Generating timeline...');
         setAiParams(params);
+        
+        // Brief pause so user sees the final message
+        await new Promise(resolve => setTimeout(resolve, 600));
+        setLoadingMessage('Launching visualizer...');
+        await new Promise(resolve => setTimeout(resolve, 400));
       } catch (err) {
         console.error('AI processing failed:', err);
+        setLoadingMessage('Starting visualizer...');
+        await new Promise(resolve => setTimeout(resolve, 400));
       }
+
+      setAudioFile(file);
+      setAudioLoaded(true);
+      setIsLoading(false);
+      setLoadingMessage('');
     }
   };
 
@@ -170,8 +184,10 @@ function App() {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
+    audioFiltersRef.current = null;
     
-    // Reset all state
+    // Reset all state - analyser set to null FIRST so IdleVisualizer cleans up
+    setAnalyser(null);
     setAudioFile(null);
     setAudioLoaded(false);
     setAiParams(null);
@@ -179,9 +195,10 @@ function App() {
     setCurrentTime(0);
     setDuration(0);
     setPlaybackSpeed(1);
-    setAnalyser(null);
     setCurrentShape(null);
     setJourneyEnabled(true);
+    setAudioTuning({ bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 });
+    setAudioPlaybackTuning({ bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 });
   };
 
   // Update audio EQ filters when playback tuning changes
@@ -253,6 +270,19 @@ function App() {
 
       {/* Gradient Overlay */}
       <div className="gradient-overlay"></div>
+
+      {/* Loading Screen */}
+      {isLoading && (
+        <div className="loading-screen">
+          <div className="loading-content">
+            <div className="loading-spinner">
+              <div className="spinner-ring"></div>
+              <div className="spinner-ring spinner-ring-2"></div>
+            </div>
+            <p className="loading-message">{loadingMessage}</p>
+          </div>
+        </div>
+      )}
 
       {/* Landing Screen UI (fades out after audio loads) */}
       <div className={`landing-screen ${audioLoaded ? 'fade-out' : ''}`}>

@@ -82,11 +82,23 @@ export default function TimelineControls({
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  // Hardcoded event timestamps (will come from AI params later)
-  const SHAPE_TIMESTAMPS = [30, 60, 90, 120];
-  const JOURNEY_TIMESTAMPS = [
-    { time: 45, duration: 25 },
-  ];
+  // Dynamic timestamps from backend structural analysis
+  const SHAPE_TIMESTAMPS = aiParams?.shapeChanges || [30, 60, 90, 120];
+  const journeys = aiParams?.journeys || [];
+
+  const JOURNEY_TIMESTAMPS = journeys.map(j => ({
+    time: j.start,
+    duration: j.duration ?? (j.end - j.start),
+  }));
+
+
+  useEffect(() => {
+    console.log("[v0] TimelineControls aiParams:", aiParams ? "received" : "null");
+    console.log("[v0] TimelineControls SHAPE_TIMESTAMPS:", SHAPE_TIMESTAMPS);
+    console.log("[v0] TimelineControls journeys:", journeys);
+    console.log("[v0] TimelineControls JOURNEY_TIMESTAMPS:", JOURNEY_TIMESTAMPS);
+  }, [aiParams]);
+
 
   return (
     <div className={`timeline-controls ${aiParams ? 'visible' : ''}`}>

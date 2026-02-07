@@ -9,7 +9,7 @@ import { generateSpherePositions, applySphereMotion } from '../shapes/SphereShap
 import { generateTorusPositions, applyTorusMotion } from '../shapes/TorusShape';
 import { generateSpiralPositions, applySpiralMotion } from '../shapes/SpiralShape';
 import { generateCubePositions, applyCubeMotion } from '../shapes/CubeShape';
-import { generateWavePositions, applyWaveMotion} from '../shapes/WaveShape';
+import { generateWavePositions, applyWaveMotion } from '../shapes/WaveShape';
 
 // Placeholder AI parameters - will be replaced with actual AI analysis
 const DEFAULT_AI_PARAMS = {
@@ -62,7 +62,7 @@ const SHAPE_MOTIONS = {
   [SHAPES.WAVE]: applyWaveMotion,
 };
 
-export default function IdleVisualizer({ 
+export default function IdleVisualizer({
   audioData = null,
   analyser = null,
   aiParams,
@@ -75,7 +75,7 @@ export default function IdleVisualizer({
   // Ensure aiParams is always valid
   const params = aiParams || DEFAULT_AI_PARAMS;
   const tuning = audioTuning || { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 };
-  
+
   const pointsRef = useRef();
   const materialRef = useRef();
   const timeRef = useRef(0);
@@ -83,20 +83,20 @@ export default function IdleVisualizer({
   const targetShapeRef = useRef(null);
   const morphProgressRef = useRef(0);
   const lastTimestampRef = useRef(0);
-  
+
   const audioStateRef = useRef({
     // Vocal-driven (mid/treble frequencies)
     vocalEnergy: 0,
     vocalIntensity: 0,
     particleSpeed: 0,
     turbulence: 0,
-    
+
     // Beat-driven (bass frequencies)
     bassStrength: 0,
     beatHit: 0,
     expansion: 0,
   });
-  
+
   const audioAnalyzerRef = useRef(null);
   const beatTimestampsRef = useRef([]);
   const lastBeatIndexRef = useRef(0);
@@ -112,11 +112,20 @@ export default function IdleVisualizer({
     }
   }, [params.beats]);
 
-  // Initialize Butterchurn audio analyzer
+  // Initialize Butterchurn audio analyzer (recreate when analyser changes)
   useEffect(() => {
-    if (analyser && !audioAnalyzerRef.current) {
+    if (analyser) {
       audioAnalyzerRef.current = new ButterchurnAudioAnalyzer(analyser);
-      console.log('[v0] Butterchurn audio analyzer initialized');
+    } else {
+      // Full cleanup when analyser is removed (back button)
+      audioAnalyzerRef.current = null;
+      beatTimestampsRef.current = [];
+      lastBeatIndexRef.current = 0;
+      lastTimestampRef.current = 0;
+      // Reset audio state
+      const s = audioStateRef.current;
+      s.vocalEnergy = 0; s.vocalIntensity = 0; s.particleSpeed = 0;
+      s.turbulence = 0; s.bassStrength = 0; s.beatHit = 0; s.expansion = 0;
     }
   }, [analyser]);
 
@@ -126,7 +135,7 @@ export default function IdleVisualizer({
     const positions = new Float32Array(POINT_COUNT * 3);
     const originalPositions = SHAPE_GENERATORS[SHAPES.JELLYFISH](POINT_COUNT);
     const targetPositions = new Float32Array(POINT_COUNT * 3);
-    
+
     positions.set(originalPositions);
     targetPositions.set(originalPositions);
 
@@ -145,7 +154,7 @@ export default function IdleVisualizer({
   useEffect(() => {
     if (manualShape && manualShape !== currentShapeRef.current) {
       console.log('[v0] Manual shape change:', currentShapeRef.current, '→', manualShape);
-      
+
       // Generate target shape using appropriate generator
       const newPositions = SHAPE_GENERATORS[manualShape](pointCount);
       targetPositions.set(newPositions);
@@ -157,16 +166,16 @@ export default function IdleVisualizer({
   // Check for shape transitions based on timestamp (range-based for reliability)
   useEffect(() => {
     if (!isPlaying) return;
-    
+
     SHAPE_TIMESTAMPS.forEach(ts => {
       // Trigger if within 0.5s window of the timestamp and haven't triggered this one yet
       if (currentTime >= ts.time && currentTime < ts.time + 0.5 && lastTimestampRef.current !== ts.time) {
         lastTimestampRef.current = ts.time;
-        
+
         // Select random shape different from current
         const availableShapes = Object.values(SHAPES).filter(s => s !== currentShapeRef.current);
         const newShape = availableShapes[Math.floor(Math.random() * availableShapes.length)];
-        
+
         // Generate target shape
         const newPositions = SHAPE_GENERATORS[newShape](pointCount);
         targetPositions.set(newPositions);
@@ -189,25 +198,25 @@ export default function IdleVisualizer({
     if (!pointsRef.current) return;
 
     const audioState = audioStateRef.current;
-    
+
     // Get real-time audio data using Butterchurn-style analyzer
     if (audioAnalyzerRef.current && isPlaying) {
       const audioData = audioAnalyzerRef.current.analyze();
-      
+
       // Apply tuning multipliers to audio bands
       const sens = tuning.sensitivity;
       const bass = audioData.bass_att * tuning.bass * sens;
       const mid = audioData.mid_att * tuning.mid * sens;
       const treb = audioData.treb_att * tuning.treble * sens;
       const vol = audioData.vol_att * sens;
-      
+
       // Calculate vocal energy from mid and treble
       const vocalEnergy = (mid * 1.5 + treb) / 2.5;
 
       // Check for beat timestamps from backend (librosa)
       if (beatTimestampsRef.current.length > 0) {
         const currentBeat = beatTimestampsRef.current[lastBeatIndexRef.current];
-        
+
         if (currentBeat && Math.abs(currentTime - currentBeat.time) < 0.05) {
           // Trigger beat at timestamp with strength from librosa
           const strength = currentBeat.strength || 1.0;
@@ -233,7 +242,7 @@ export default function IdleVisualizer({
       audioState.vocalIntensity = THREE.MathUtils.lerp(audioState.vocalIntensity, 0, 0.1);
       audioState.particleSpeed = THREE.MathUtils.lerp(audioState.particleSpeed, 0.1, 0.08);
       audioState.turbulence = THREE.MathUtils.lerp(audioState.turbulence, 0.02, 0.1);
-      
+
       // Beat values should not decay when paused - just reset to 0
       audioState.bassStrength = 0;
       audioState.beatHit = 0;
@@ -248,7 +257,7 @@ export default function IdleVisualizer({
     // Handle shape morphing - slow and fluid (~3 seconds)
     if (targetShapeRef.current && morphProgressRef.current < 1) {
       morphProgressRef.current += delta * 0.35;
-      
+
       if (morphProgressRef.current >= 1) {
         morphProgressRef.current = 1;
         originalPositions.set(targetPositions);
@@ -266,19 +275,19 @@ export default function IdleVisualizer({
     if (isMorphing) {
       // Smoothstep easing for position interpolation
       const t = morphProgress * morphProgress * (3 - 2 * morphProgress);
-      
+
       // Apply OLD shape motion to original positions
       const oldMotionPos = new Float32Array(originalPositions.length);
       oldMotionPos.set(originalPositions);
       const currentMotion = SHAPE_MOTIONS[currentShapeRef.current];
       currentMotion(oldMotionPos, originalPositions, audioState, timeRef, params);
-      
+
       // Apply NEW shape motion to target positions
       const newMotionPos = new Float32Array(targetPositions.length);
       newMotionPos.set(targetPositions);
       const targetMotion = SHAPE_MOTIONS[targetShapeRef.current];
       targetMotion(newMotionPos, targetPositions, audioState, timeRef, params);
-      
+
       // Blend between old and new motion results
       for (let i = 0; i < posArr.length; i++) {
         posArr[i] = THREE.MathUtils.lerp(oldMotionPos[i], newMotionPos[i], t);
@@ -305,7 +314,7 @@ export default function IdleVisualizer({
     if (materialRef.current) {
       const hue = params.colorScheme.hueBase - audioState.vocalEnergy * 0.4;
       const lightness = params.colorScheme.brightness + audioState.beatHit * 0.3;
-      
+
       materialRef.current.color
         .setHSL(hue, params.colorScheme.saturation, lightness)
         .multiplyScalar(1.8 + audioState.vocalEnergy * 1.5 + audioState.beatHit * 5.0);

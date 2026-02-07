@@ -6,6 +6,13 @@ import os
 import logging
 import time
 
+from audio.section_analysis import (
+    compute_energy_curve,
+    segment_sections,
+    detect_journeys,
+    generate_shape_changes
+)
+
 router = APIRouter()
 
 logger = logging.getLogger("audiolyze.analyze")
@@ -25,11 +32,17 @@ async def analyze_audio(file: UploadFile = File(...)):
         tmp_path = tmp.name
 
     try:
-        # ---- Load audio ----
+        # =====================================================
+        # LOAD AUDIO
+        # =====================================================
         y, sr = librosa.load(tmp_path, mono=True)
         duration = float(librosa.get_duration(y=y, sr=sr))
 
-        # ---- Global features ----
+        logger.info("Loaded audio: %.2fs @ %d Hz", duration, sr)
+
+        # =====================================================
+        # GLOBAL FEATURES
+        # =====================================================
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
 
         rms = librosa.feature.rms(y=y)[0]
@@ -37,7 +50,6 @@ async def analyze_audio(file: UploadFile = File(...)):
 
         stft = np.abs(librosa.stft(y))
         freqs = librosa.fft_frequencies(sr=sr)
-
         bass_energy = float(np.mean(stft[freqs < 150]))
 
         spectral_centroid = float(
@@ -55,7 +67,9 @@ async def analyze_audio(file: UploadFile = File(...)):
             "duration": duration,
         }
 
-        # ---- Beatmap extraction (IMPORTANT PART) ----
+        # =====================================================
+        # BEATMAP (LIBROSA)
+        # =====================================================
         onset_env = librosa.onset.onset_strength(y=y, sr=sr)
 
         tempo_bt, beat_frames = librosa.beat.beat_track(
@@ -63,10 +77,7 @@ async def analyze_audio(file: UploadFile = File(...)):
             sr=sr
         )
 
-        logger.info("Audio loaded: y=%d samples, sr=%d", len(y), sr)
-
-
-        # Fallback if no beats detected
+        # Fallback if beat tracker fails
         if len(beat_frames) == 0:
             beat_frames = librosa.onset.onset_detect(
                 onset_envelope=onset_env,
@@ -87,22 +98,59 @@ async def analyze_audio(file: UploadFile = File(...)):
         beats = [
             {
                 "time": float(t),
-                "strength": float(np.clip(s, 0, 1))
+                "strength": float(np.clip(s, 0.0, 1.0))
             }
             for t, s in zip(beat_times, beat_strengths)
         ]
 
         logger.info("Detected %d beats", len(beats))
-        logger.info("Beat frames: %s", beat_frames[:10])
 
+        # =====================================================
+        # STRUCTURAL ANALYSIS (YOUR NEW LOGIC)
+        # =====================================================
+        times, energy_curve = compute_energy_curve(y, sr)
+        sections = segment_sections(times, energy_curve)
+
+        logger.info("Section durations sample: %s", [
+            round(s["end"] - s["start"], 2) for s in sections[:10]
+        ])
+        logger.info("Max section energy: %.3f", max(s["energy"] for s in sections) if sections else -1)
+
+        journeys = detect_journeys(sections)
+        shape_changes = generate_shape_changes(sections, journeys)
+
+
+        logger.info(
+            "Sections=%d | Shape changes=%d | Journey=%s",
+            len(sections),
+            len(shape_changes),
+            "YES" if journeys else "NO"
+        )
+
+        # =====================================================
+        # RESPONSE
+        # =====================================================
         return {
             "ok": True,
             "features": features,
             "beatmap": {
                 "tempo": float(tempo_bt),
                 "beats": beats
+            },
+            "structure": {
+                "sections": [
+                    {
+                        "start": float(s["start"]),
+                        "end": float(s["end"]),
+                        "energy": float(s["energy"])
+                    }
+                    for s in sections
+                ],
+            "journeys": journeys,
+            "shapeChanges": shape_changes,
             }
         }
 
     finally:
         os.remove(tmp_path)
+        logger.info("=== /analyze END (%.2fs) ===", time.time() - t0)

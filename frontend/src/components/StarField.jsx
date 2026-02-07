@@ -5,61 +5,56 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 export default function StarField({ beatHit = 0, expansion = 0 }) {
-  const pointsRef = useRef();
+  const starsRef = useRef();
+  const beatStateRef = useRef({
+    sizeMultiplier: 1,
+  });
 
-  // Internal beat envelope (fast attack, fast decay)
-  const beatEnvelopeRef = useRef(0);
-
-  const { positions, sizes, starCount } = useMemo(() => {
+  // Generate stars in a sphere around the scene
+  const { positions, starCount } = useMemo(() => {
     const STAR_COUNT = 3000;
     const positions = new Float32Array(STAR_COUNT * 3);
-    const sizes = new Float32Array(STAR_COUNT);
-
-    const radius = 150;
-
+    const radius = 150; // Distance from center
+    
     for (let i = 0; i < STAR_COUNT; i++) {
+      // Distribute stars evenly in a sphere
       const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 2 - 1);
-      const r = radius + Math.random() * 50;
-
+      const phi = Math.acos((Math.random() * 2) - 1);
+      const r = radius + Math.random() * 50; // Add some depth variation
+      
       positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
       positions[i * 3 + 2] = r * Math.cos(phi);
-
-      // Per-star base size
-      sizes[i] = Math.random() * 1.2 + 0.3;
     }
-
-    return { positions, sizes, starCount: STAR_COUNT };
+    
+    return { positions, starCount: STAR_COUNT };
   }, []);
 
-  useFrame((_, delta) => {
-    if (!pointsRef.current) return;
-
-    // FAST ATTACK
-    if (beatHit > 0.1) {
-      beatEnvelopeRef.current = Math.min(
-        beatEnvelopeRef.current + beatHit * 6,
-        12
-      );
-    } else {
-      // FAST DECAY
-      beatEnvelopeRef.current = THREE.MathUtils.lerp(
-        beatEnvelopeRef.current,
-        0,
-        0.05
-      );
+  useFrame((state, delta) => {
+    if (!starsRef.current) return;
+    
+    const beatState = beatStateRef.current;
+    
+    // React to beats with fast attack, very slow decay
+    const targetSize = 1 + beatHit * 0.8 + expansion * 0.3;
+    beatState.sizeMultiplier = THREE.MathUtils.lerp(beatState.sizeMultiplier, targetSize, 0.25);
+    
+    // Very slow decay when no beat
+    if (beatHit < 0.1 && expansion < 0.1) {
+      beatState.sizeMultiplier = THREE.MathUtils.lerp(beatState.sizeMultiplier, 1, 0.015);
     }
-
-    pointsRef.current.material.uniforms.uBeat.value =
-      beatEnvelopeRef.current;
-
-    // Subtle slow drift
-    pointsRef.current.rotation.y += delta * 0.002;
+    
+    // Update star size based on beat
+    if (starsRef.current.material) {
+      starsRef.current.material.size = 0.4 * beatState.sizeMultiplier;
+    }
+    
+    // Subtle rotation
+    starsRef.current.rotation.y += delta * 0.003;
   });
 
   return (
-    <points ref={pointsRef}>
+    <points ref={starsRef}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
@@ -67,44 +62,15 @@ export default function StarField({ beatHit = 0, expansion = 0 }) {
           array={positions}
           itemSize={3}
         />
-        <bufferAttribute
-          attach="attributes-aSize"
-          count={starCount}
-          array={sizes}
-          itemSize={1}
-        />
       </bufferGeometry>
-
-      <shaderMaterial
+      <pointsMaterial
+        size={0.4}
+        color="#ffffff"
         transparent
+        opacity={0.7}
         depthWrite={false}
+        sizeAttenuation={true}
         blending={THREE.AdditiveBlending}
-        uniforms={{
-          uBeat: { value: 0 },
-        }}
-        vertexShader={`
-          attribute float aSize;
-          uniform float uBeat;
-
-          void main() {
-            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-
-            float beatBoost = clamp(uBeat, 0.0, 12.0);
-            float size = aSize * (1.0 + beatBoost * 2.5);
-
-            gl_PointSize = size * (300.0 / -mvPosition.z);
-            gl_Position = projectionMatrix * mvPosition;
-          }
-        `}
-        fragmentShader={`
-          void main() {
-            float d = length(gl_PointCoord - 0.5);
-            if (d > 0.5) discard;
-
-            float alpha = smoothstep(0.5, 0.0, d);
-            gl_FragColor = vec4(vec3(1.0), alpha);
-          }
-        `}
       />
     </points>
   );
