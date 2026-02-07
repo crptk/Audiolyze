@@ -1,5 +1,39 @@
 const API_BASE = "http://127.0.0.1:8000";
 
+/**
+ * Fetch SoundCloud URL info (track or playlist metadata).
+ */
+export async function fetchSoundCloudInfo(url) {
+  const res = await fetch(`${API_BASE}/soundcloud/info`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+
+  if (!res.ok) {
+    throw new Error("SoundCloud info request failed");
+  }
+
+  return res.json();
+}
+
+/**
+ * Download a single SoundCloud track. Returns { ok, file_url, filename }.
+ */
+export async function fetchSoundCloudDownload(url) {
+  const res = await fetch(`${API_BASE}/soundcloud/download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+
+  if (!res.ok) {
+    throw new Error("SoundCloud download request failed");
+  }
+
+  return res.json();
+}
+
 export async function fetchAIParams(file) {
   // 1️⃣ Analyze audio (features + beatmap + structure)
   const formData = new FormData();

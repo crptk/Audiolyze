@@ -619,6 +619,62 @@
   height: 20px;
 }
 
+/* Now Playing */
+.now-playing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  max-width: 280px;
+  overflow: hidden;
+}
+
+.now-playing-icon {
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.now-playing-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.now-playing-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.now-playing-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.now-playing-queue {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 119, 0, 0.7);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .timeline-controls {

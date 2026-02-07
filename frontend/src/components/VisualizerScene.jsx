@@ -31,13 +31,10 @@ export default function VisualizerScene({
 
   // When IdleVisualizer triggers a shape change, notify parent to also switch environment
   const handleShapeChange = useCallback((newShape) => {
-    console.log('[v0] VisualizerScene: shape change triggered, newShape:', newShape);
-    if (onShapeChanged) onShapeChanged();
+    if (onShapeChanged) onShapeChanged(newShape);
   }, [onShapeChanged]);
 
-  useEffect(() => {
-    console.log('[v0] VisualizerScene: currentEnvironment prop =', currentEnvironment);
-  }, [currentEnvironment]);
+
 
   useEffect(() => {
     if (resetRef) {

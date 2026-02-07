@@ -183,6 +183,102 @@
   50% { opacity: 1; }
 }
 
+/* SoundCloud Section */
+.soundcloud-section {
+  margin-top: 1.5rem;
+  width: 100%;
+}
+
+.soundcloud-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 1.25rem;
+}
+
+.divider-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.divider-text {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
+.soundcloud-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.soundcloud-input-wrapper:focus-within {
+  border-color: rgba(255, 119, 0, 0.5);
+  box-shadow: 0 0 0 2px rgba(255, 119, 0, 0.1);
+}
+
+.soundcloud-icon {
+  color: rgba(255, 119, 0, 0.7);
+  margin-left: 14px;
+  flex-shrink: 0;
+}
+
+.soundcloud-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  padding: 14px 12px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.soundcloud-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.soundcloud-submit {
+  background: rgba(255, 119, 0, 0.15);
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 119, 0, 0.9);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.soundcloud-submit:hover:not(:disabled) {
+  background: rgba(255, 119, 0, 0.25);
+  color: #ff7700;
+}
+
+.soundcloud-submit:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.soundcloud-error {
+  color: rgba(255, 100, 100, 0.9);
+  font-size: 0.8125rem;
+  margin: 8px 0 0;
+  text-align: left;
+  padding-left: 4px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .title {
