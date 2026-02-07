@@ -432,6 +432,53 @@ function App() {
     });
   }, [playlistQueue, loadSoundCloudTrack]);
 
+  // Play a specific track from the playlist
+  const playPlaylistTrack = useCallback(async (trackIndex) => {
+    if (trackIndex < 0 || trackIndex >= playlistQueue.length) return;
+    if (trackIndex === playlistIndex) return; // Already playing
+
+    const selectedTrack = playlistQueue[trackIndex];
+
+    // Clean up current audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    audioFiltersRef.current = null;
+    setAnalyser(null);
+    setAiParams(null);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setCurrentShape(null);
+
+    // Download and load selected track
+    setIsLoading(true);
+    setLoadingMessage(`Downloading: ${selectedTrack.title}...`);
+    setPlaylistIndex(trackIndex);
+
+    try {
+      const downloadData = await fetchSoundCloudDownload(selectedTrack.url);
+      if (!downloadData.ok) {
+        console.error('Failed to download track:', selectedTrack.title);
+        setIsLoading(false);
+        setLoadingMessage('');
+        return;
+      }
+
+      const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
+      await loadSoundCloudTrack(blobUrl, selectedTrack.title);
+    } catch (err) {
+      console.error('Failed to download track:', selectedTrack.title, err);
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  }, [playlistQueue, playlistIndex, loadSoundCloudTrack]);
+
   // Handle SoundCloud URL submission
   const handleSoundCloudSubmit = async () => {
     if (!soundcloudUrl.trim()) return;
@@ -729,6 +776,7 @@ function App() {
         playlistIndex={playlistIndex}
         onNext={playNextInQueue}
         onPrevious={playPreviousInQueue}
+        onPlaylistTrackSelect={playPlaylistTrack}
         audioTuning={audioTuning}
         onAudioTuningChange={(val) => {
           setAudioTuning(val);
