@@ -160,7 +160,6 @@ export default function IdleVisualizer({
       targetPositions.set(newPositions);
       targetShapeRef.current = manualShape;
       morphProgressRef.current = 0;
-      console.log('[v0] IdleVisualizer: manual shape change ->', manualShape);
       // Don't call onShapeChange for manual changes - it's already set in App.jsx
     }
   }, [manualShape, pointCount, targetPositions]);
@@ -180,7 +179,6 @@ export default function IdleVisualizer({
         targetPositions.set(newPositions);
         targetShapeRef.current = newShape;
         morphProgressRef.current = 0;
-        console.log('[v0] IdleVisualizer: timestamp shape change at', currentTime.toFixed(2), 's ->', newShape, '- calling onShapeChange');
         if (onShapeChange) onShapeChange(newShape);
         break;
       }

@@ -18,6 +18,9 @@ export default function TimelineControls({
   currentEnvironment,
   onEnvironmentChange,
   onReset,
+  nowPlaying = null,
+  playlistQueue = [],
+  playlistIndex = -1,
   audioTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
   onAudioTuningChange,
   audioPlaybackTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
@@ -176,7 +179,6 @@ export default function TimelineControls({
                       className={`dropdown-item ${currentShape === shape.id ? 'active' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        console.log('[v0] Shape selected:', shape.id);
                         onShapeChange(shape.id);
                         setShowShapeDropdown(false);
                       }}
@@ -308,7 +310,6 @@ export default function TimelineControls({
                       className={`dropdown-item ${currentEnvironment === env.id ? 'active' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        console.log('[v0] Environment selected:', env.id);
                         onEnvironmentChange(env.id);
                         setShowEnvironmentDropdown(false);
                       }}
@@ -432,6 +433,34 @@ export default function TimelineControls({
             2x
           </button>
         </div>
+
+        {/* Now Playing (right-aligned) */}
+        {nowPlaying && (
+          <div className="now-playing">
+            <div className="now-playing-icon">
+              {nowPlaying.source === 'soundcloud' ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 18V5l12-2v13" />
+                  <circle cx="6" cy="18" r="3" />
+                  <circle cx="18" cy="16" r="3" />
+                </svg>
+              )}
+            </div>
+            <div className="now-playing-info">
+              <span className="now-playing-label">Now Playing</span>
+              <span className="now-playing-title">{nowPlaying.title}</span>
+              {playlistQueue.length > 1 && (
+                <span className="now-playing-queue">
+                  {playlistIndex + 1} / {playlistQueue.length}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
