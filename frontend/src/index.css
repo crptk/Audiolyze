@@ -1,68 +1,112 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
+html, body, #root {
   margin: 0;
+  width: 100%;
+  height: 100%;
+  background: black;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont;
+}
+
+.app-root {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* ===== Background Canvas ===== */
+.bg-canvas {
+  position: absolute !important;
+  inset: 0;
+  transition: filter 1.2s ease, transform 1.2s ease;
+}
+
+.bg-canvas.blurred {
+  filter: blur(30px) brightness(0.8);
+  transform: scale(1.05);
+}
+
+.bg-canvas.unblurred {
+  filter: blur(0px);
+  transform: scale(1);
+}
+
+/* ===== Landing UI ===== */
+.landing-ui {
+  position: absolute;
+  inset: 0;
   display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  text-align: center;
+  backdrop-filter: blur(2px);
+  animation: fadeIn 1.5s ease;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+.title {
+  font-size: 64px;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+.subtitle {
+  opacity: 0.7;
+  margin-bottom: 40px;
+}
+
+/* ===== Upload Box ===== */
+.upload-box {
+  padding: 18px 36px;
+  border: 1px dashed rgba(255,255,255,0.4);
+  border-radius: 12px;
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  transition: all 0.3s ease;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+.upload-box:hover {
+  border-color: white;
+  background: rgba(255,255,255,0.05);
+}
+
+/* ===== Processing Overlay ===== */
+.processing-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  background: rgba(0,0,0,0.4);
+  font-size: 18px;
+  letter-spacing: 0.05em;
+}
+
+/* ===== Light Leak Edges ===== */
+.light-leak {
+  position: absolute;
+  inset: -40%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  animation: leakMove 18s linear infinite;
+}
+
+.leak-1 {
+  background: radial-gradient(circle at 30% 30%, #38bdf8, transparent 60%);
+}
+
+.leak-2 {
+  background: radial-gradient(circle at 70% 70%, #a855f7, transparent 60%);
+  animation-duration: 25s;
+}
+
+@keyframes leakMove {
+  0% { transform: translate(0, 0); }
+  50% { transform: translate(10%, -10%); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0 }
+  to { opacity: 1 }
 }
