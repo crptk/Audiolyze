@@ -15,8 +15,8 @@ export default function TimelineControls({
   onSpeedChange,
   onShapeChange,
   currentShape,
-  onJourneyToggle,
-  journeyEnabled,
+  currentEnvironment,
+  onEnvironmentChange,
   onReset,
   audioTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
   onAudioTuningChange,
@@ -83,22 +83,8 @@ export default function TimelineControls({
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   // Dynamic timestamps from backend structural analysis
+  // Shape changes also trigger environment switches in the visualizer
   const SHAPE_TIMESTAMPS = aiParams?.shapeChanges || [30, 60, 90, 120];
-  const journeys = aiParams?.journeys || [];
-
-  const JOURNEY_TIMESTAMPS = journeys.map(j => ({
-    time: j.start,
-    duration: j.duration ?? (j.end - j.start),
-  }));
-
-
-  useEffect(() => {
-    console.log("[v0] TimelineControls aiParams:", aiParams ? "received" : "null");
-    console.log("[v0] TimelineControls SHAPE_TIMESTAMPS:", SHAPE_TIMESTAMPS);
-    console.log("[v0] TimelineControls journeys:", journeys);
-    console.log("[v0] TimelineControls JOURNEY_TIMESTAMPS:", JOURNEY_TIMESTAMPS);
-  }, [aiParams]);
-
 
   return (
     <div className={`timeline-controls ${aiParams ? 'visible' : ''}`}>
@@ -225,21 +211,32 @@ export default function TimelineControls({
               ))}
             </div>
 
-            <div className="dropdown-header" style={{ marginTop: '16px' }}>Journey Mode</div>
-            <button
-              className={`journey-toggle ${journeyEnabled ? 'active' : ''}`}
-              onClick={() => {
-                onJourneyToggle(!journeyEnabled);
-              }}
-              title={journeyEnabled ? 'Disable Journey Mode' : 'Enable Journey Mode'}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                <path d="M2 17l10 5 10-5" />
-                <path d="M2 12l10 5 10-5" />
-              </svg>
-              <span>{journeyEnabled ? 'Journey Mode ON' : 'Journey Mode OFF'}</span>
-            </button>
+            <div className="dropdown-header" style={{ marginTop: '16px' }}>Environment</div>
+            <div className="shape-grid">
+              {[
+                { id: 'warp', label: 'Warp' },
+                { id: 'orbit', label: 'Orbit' },
+                { id: 'aurora', label: 'Aurora' },
+                { id: 'fireflies', label: 'Fireflies' },
+                { id: 'rain', label: 'Rain' },
+              ].map(env => (
+                <button
+                  key={env.id}
+                  className={`shape-button ${currentEnvironment === env.id ? 'active' : ''}`}
+                  onClick={() => {
+                    console.log('[v0] TimelineControls: manual environment change ->', env.id);
+                    onEnvironmentChange(env.id);
+                    setShowManualControls(false);
+                  }}
+                  title={env.label}
+                >
+                  <span className="shape-label">{env.label}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', padding: '4px 0' }}>
+              Auto-switches with shape changes
+            </div>
 
             <div className="dropdown-header" style={{ marginTop: '16px' }}>Controls</div>
             <button
@@ -269,30 +266,15 @@ export default function TimelineControls({
           onMouseDown={handleMouseDown}
         >
           <div className="timeline-track">
-            {/* Shape change markers */}
+            {/* Shape + environment change markers */}
             {duration > 0 && SHAPE_TIMESTAMPS.map((time, idx) => (
               <div
                 key={`shape-${idx}`}
                 className="timeline-marker shape-marker"
                 style={{ left: `${(time / duration) * 100}%` }}
-                title={`Shape change at ${formatTime(time)}`}
+                title={`Shape & environment change at ${formatTime(time)}`}
               >
-                <div className="marker-icon">🔄</div>
-              </div>
-            ))}
-
-            {/* Journey mode markers */}
-            {duration > 0 && JOURNEY_TIMESTAMPS.map((journey, idx) => (
-              <div
-                key={`journey-${idx}`}
-                className="timeline-marker journey-marker"
-                style={{
-                  left: `${(journey.time / duration) * 100}%`,
-                  width: `${(journey.duration / duration) * 100}%`
-                }}
-                title={`Journey mode ${formatTime(journey.time)} - ${formatTime(journey.time + journey.duration)}`}
-              >
-                <div className="marker-icon">🚀</div>
+                <div className="marker-dot" />
               </div>
             ))}
 

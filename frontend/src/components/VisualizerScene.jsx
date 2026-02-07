@@ -1,13 +1,12 @@
 'use client';
 
+import { useState, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { OrbitControls } from '@react-three/drei';
-import { useState, useRef, useEffect } from 'react';
 import IdleVisualizer from '../scenes/IdleVisualizer';
 import StarField from './StarField';
 import AuroraRing from './AuroraRing';
-import JourneyMode from './JourneyMode';
+import EnvironmentManager from './EnvironmentManager';
 
 export default function VisualizerScene({
   audioFile = null,
@@ -16,142 +15,88 @@ export default function VisualizerScene({
   analyser = null,
   currentTime = 0,
   manualShape = null,
-  journeyEnabled = true,
-  mouseSensitivity = 0.5, // 0.1 to 2.0
+  currentEnvironment = 'fireflies',
+  onShapeChanged = null,
   resetRef = null,
-  audioTuning = null
+  audioTuning = null,
 }) {
-  const [beatData, setBeatData] = useState({ beatHit: 0, expansion: 0 });
-  const [journeyActive, setJourneyActive] = useState(false);
-  const [journeyProgress, setJourneyProgress] = useState(0);
-  const visualizerGroupRef = useRef();
-  const cameraRef = useRef();
-  const controlsRef = useRef();
+  const [beatData, setBeatData] = useState({
+    beatHit: 0, expansion: 0, bassStrength: 0,
+    hue: 0.78, saturation: 1.0, lightness: 0.6,
+  });
 
-  // Journey from backend structural analysis (highest-energy sustained section)
-  const journeys = aiParams?.journeys || [];
+  const handleBeatUpdate = useCallback((data) => {
+    setBeatData(data);
+  }, []);
 
-  // Expose reset function to parent
+  // When IdleVisualizer triggers a shape change, notify parent to also switch environment
+  const handleShapeChange = useCallback((newShape) => {
+    console.log('[v0] VisualizerScene: shape change triggered, newShape:', newShape);
+    if (onShapeChanged) onShapeChanged();
+  }, [onShapeChanged]);
+
+  useEffect(() => {
+    console.log('[v0] VisualizerScene: currentEnvironment prop =', currentEnvironment);
+  }, [currentEnvironment]);
+
   useEffect(() => {
     if (resetRef) {
-      resetRef.current = () => {
-        // Reset camera orbit to default position
-        if (controlsRef.current) {
-          controlsRef.current.target.set(0, 0, 0);
-          controlsRef.current.object.position.set(0, 0, 35);
-          controlsRef.current.update();
-        }
-
-        // Reset journey state
-        setJourneyActive(false);
-        setJourneyProgress(0);
-      };
+      resetRef.current = () => {};
     }
   }, [resetRef]);
 
-  // Check for journey mode triggers using backend-detected journey
-  useEffect(() => {
-    if (!isPlaying || !journeyEnabled || journeys.length === 0) {
-      if (journeyActive) {
-        setJourneyActive(false);
-        setJourneyProgress(0);
-      }
-      return;
-    }
-
-    const activeJourney = journeys.find(
-      j => currentTime >= j.start && currentTime <= j.end
-    );
-
-    if (activeJourney) {
-      const dur = activeJourney.duration ?? (activeJourney.end - activeJourney.start);
-      const progress = (currentTime - activeJourney.start) / dur;
-
-      setJourneyActive(true);
-      setJourneyProgress(progress);
-    } else if (journeyActive) {
-      setJourneyActive(false);
-      setJourneyProgress(0);
-    }
-  }, [
-    currentTime,
-    isPlaying,
-    journeyEnabled,
-    journeys,
-    journeyActive
-  ]);
   return (
     <Canvas
       camera={{ position: [0, 0, 35], fov: 60 }}
-      gl={{ antialias: true }}
       style={{ width: '100%', height: '100%' }}
-      onCreated={({ camera }) => {
-        cameraRef.current = camera;
-      }}
+      gl={{ antialias: true, alpha: true }}
     >
-      {/* Smooth camera controls with momentum */}
+      <color attach="background" args={['#000000']} />
+      <ambientLight intensity={0.3} />
+
       <OrbitControls
-        ref={controlsRef}
-        enableDamping={true}
-        dampingFactor={0.05}
-        rotateSpeed={mouseSensitivity}
-        enableZoom={true}
+        enableZoom={false}
         enablePan={false}
-        minDistance={15}
-        maxDistance={80}
-        zoomSpeed={1.2}
+        autoRotate={false}
+        maxPolarAngle={Math.PI}
+        minPolarAngle={0}
       />
 
-      {/* Star field environment (beat-reactive) */}
-      <StarField beatHit={beatData.beatHit} expansion={beatData.expansion} />
-
-      {/* Journey Mode - Flying particles and light streams */}
-      <JourneyMode
-        isActive={journeyActive}
-        journeyProgress={journeyProgress}
-        hue={beatData.hue ?? 0.78}
-        saturation={beatData.saturation ?? 1.0}
-        lightness={beatData.lightness ?? 0.6}
+      <StarField
+        beatHit={beatData.beatHit}
+        expansion={beatData.expansion}
+        hue={beatData.hue}
+        saturation={beatData.saturation}
+        lightness={beatData.lightness}
       />
 
-      {/* Visualizer group (can move during journey) */}
-      <group ref={visualizerGroupRef}>
-        {/* Aurora Borealis Ring (beat-reactive aura) */}
-        <AuroraRing
-          beatHit={beatData.beatHit}
-          bassStrength={beatData.bassStrength || 0}
-          expansion={beatData.expansion}
-          hue={beatData.hue ?? 0.78}
-          saturation={beatData.saturation ?? 1.0}
-          lightness={beatData.lightness ?? 0.6}
-        />
+      <AuroraRing
+        beatHit={beatData.beatHit}
+        bassStrength={beatData.bassStrength}
+        expansion={beatData.expansion}
+        hue={beatData.hue}
+        saturation={beatData.saturation}
+        lightness={beatData.lightness}
+      />
 
-        {/* Particle Visualizer */}
-        <IdleVisualizer
-          audioData={audioFile}
-          analyser={analyser}
-          aiParams={aiParams}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          manualShape={manualShape}
-          onBeatUpdate={setBeatData}
-          audioTuning={audioTuning}
-        />
-      </group>
+      {/* Environment particles - always visible, switches on shape changes */}
+      <EnvironmentManager
+        currentEnv={currentEnvironment}
+        hue={beatData.hue}
+        saturation={beatData.saturation}
+        lightness={beatData.lightness}
+      />
 
-      {/* Lighting */}
-      <ambientLight intensity={0.35} />
-      <pointLight position={[10, 10, 10]} intensity={1.5} />
-
-      {/* Post-processing effects */}
-      <EffectComposer>
-        <Bloom
-          intensity={0.25}
-          luminanceThreshold={0.6}
-          luminanceSmoothing={0.8}
-          radius={0.4}
-        />
-      </EffectComposer>
+      <IdleVisualizer
+        analyser={analyser}
+        aiParams={aiParams}
+        isPlaying={isPlaying}
+        onBeatUpdate={handleBeatUpdate}
+        onShapeChange={handleShapeChange}
+        currentTime={currentTime}
+        manualShape={manualShape}
+        audioTuning={audioTuning}
+      />
     </Canvas>
   );
 }

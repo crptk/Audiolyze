@@ -68,6 +68,7 @@ export default function IdleVisualizer({
   aiParams,
   isPlaying = false,
   onBeatUpdate = null,
+  onShapeChange = null,
   currentTime = 0,
   manualShape = null,
   audioTuning = null,
@@ -108,7 +109,6 @@ export default function IdleVisualizer({
     if (params.beats && params.beats.length > 0) {
       beatTimestampsRef.current = params.beats;
       lastBeatIndexRef.current = 0;
-      console.log('[v0] Loaded', params.beats.length, 'beat timestamps:', params.beats.slice(0, 5));
     }
   }, [params.beats]);
 
@@ -142,48 +142,50 @@ export default function IdleVisualizer({
     return { positions, originalPositions, targetPositions, pointCount: POINT_COUNT };
   }, []);
 
-  // Hardcoded timestamps for shape changes (will be dynamic later)
-  const SHAPE_TIMESTAMPS = [
-    { time: 30, shape: null }, // Random shape
-    { time: 60, shape: null },
-    { time: 90, shape: null },
-    { time: 120, shape: null }
-  ];
+  // Shape change timestamps from backend structural analysis
+  const backendShapeChanges = params.shapeChanges || [];
+  const SHAPE_TIMESTAMPS = backendShapeChanges.length > 0
+    ? backendShapeChanges.map(t => ({ time: t, shape: null }))
+    : [
+        { time: 30, shape: null },
+        { time: 60, shape: null },
+        { time: 90, shape: null },
+        { time: 120, shape: null },
+      ];
 
   // Handle manual shape change - force immediate transition
   useEffect(() => {
     if (manualShape && manualShape !== currentShapeRef.current) {
-      console.log('[v0] Manual shape change:', currentShapeRef.current, '→', manualShape);
-
-      // Generate target shape using appropriate generator
       const newPositions = SHAPE_GENERATORS[manualShape](pointCount);
       targetPositions.set(newPositions);
       targetShapeRef.current = manualShape;
       morphProgressRef.current = 0;
+      console.log('[v0] IdleVisualizer: manual shape change ->', manualShape, '- calling onShapeChange');
+      if (onShapeChange) onShapeChange(manualShape);
     }
-  }, [manualShape, pointCount, targetPositions]);
+  }, [manualShape, pointCount, targetPositions, onShapeChange]);
 
   // Check for shape transitions based on timestamp (range-based for reliability)
   useEffect(() => {
     if (!isPlaying) return;
 
-    SHAPE_TIMESTAMPS.forEach(ts => {
-      // Trigger if within 0.5s window of the timestamp and haven't triggered this one yet
+    for (const ts of SHAPE_TIMESTAMPS) {
       if (currentTime >= ts.time && currentTime < ts.time + 0.5 && lastTimestampRef.current !== ts.time) {
         lastTimestampRef.current = ts.time;
 
-        // Select random shape different from current
         const availableShapes = Object.values(SHAPES).filter(s => s !== currentShapeRef.current);
         const newShape = availableShapes[Math.floor(Math.random() * availableShapes.length)];
 
-        // Generate target shape
         const newPositions = SHAPE_GENERATORS[newShape](pointCount);
         targetPositions.set(newPositions);
         targetShapeRef.current = newShape;
         morphProgressRef.current = 0;
+        console.log('[v0] IdleVisualizer: timestamp shape change at', currentTime.toFixed(2), 's ->', newShape, '- calling onShapeChange');
+        if (onShapeChange) onShapeChange(newShape);
+        break;
       }
-    });
-  }, [currentTime, isPlaying, manualShape, pointCount, targetPositions]);
+    }
+  }, [currentTime, isPlaying, pointCount, targetPositions, onShapeChange]);
 
   // Process audio data if available
   useEffect(() => {
@@ -191,7 +193,7 @@ export default function IdleVisualizer({
 
     // TODO: Connect to Web Audio API analyzer
     // This will be filled when audio is loaded
-    console.log('[v0] Audio data ready for processing');
+    // Audio data connected
   }, [audioData, isPlaying]);
 
   useFrame((state, delta) => {

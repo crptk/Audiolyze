@@ -5,6 +5,7 @@ import { fetchAIParams } from "./api/audiolyze";
 import VisualizerScene from './components/VisualizerScene';
 import TimelineControls from './components/TimelineControls';
 import BackButton from './components/BackButton';
+import { ENVIRONMENTS, pickRandomEnvironment } from './components/EnvironmentManager';
 import './App.css';
 import './styles/visualizer.css';
 
@@ -23,7 +24,11 @@ function App() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [analyser, setAnalyser] = useState(null);
   const [currentShape, setCurrentShape] = useState(null);
-  const [journeyEnabled, setJourneyEnabled] = useState(true);
+  const [currentEnvironment, setCurrentEnvironment] = useState(ENVIRONMENTS.FIREFLIES);
+  
+  useEffect(() => {
+    console.log('[v0] App.jsx currentEnvironment changed to:', currentEnvironment);
+  }, [currentEnvironment]);
   const [audioTuning, setAudioTuning] = useState({
     bass: 1.0,
     mid: 1.0,
@@ -108,7 +113,6 @@ function App() {
 
       try {
         const params = await fetchAIParams(file);
-        console.log("[v0] App.jsx received aiParams:", JSON.stringify({ journey: params.journey, shapeChanges: params.shapeChanges, beatCount: params.beats?.length }));
         setLoadingMessage('Generating timeline...');
         setAiParams(params);
         
@@ -166,12 +170,20 @@ function App() {
     
     // Reset visualizer state
     setCurrentShape(null);
-    setJourneyEnabled(true);
     
     // Reset camera and visualizer position
     if (resetVisualizerRef.current) {
       resetVisualizerRef.current();
     }
+  };
+
+  // When a shape changes (from backend timestamps or manual), also switch environment
+  const handleShapeChanged = () => {
+    setCurrentEnvironment(prev => {
+      const next = pickRandomEnvironment(prev);
+      console.log('[v0] Shape changed - switching environment:', prev, '->', next);
+      return next;
+    });
   };
 
   const handleBackToMenu = () => {
@@ -196,7 +208,7 @@ function App() {
     setDuration(0);
     setPlaybackSpeed(1);
     setCurrentShape(null);
-    setJourneyEnabled(true);
+    setCurrentEnvironment(ENVIRONMENTS.FIREFLIES);
     setAudioTuning({ bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 });
     setAudioPlaybackTuning({ bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 });
   };
@@ -262,7 +274,8 @@ function App() {
           analyser={analyser}
           currentTime={currentTime}
           manualShape={currentShape}
-          journeyEnabled={journeyEnabled}
+          currentEnvironment={currentEnvironment}
+          onShapeChanged={handleShapeChanged}
           resetRef={resetVisualizerRef}
           audioTuning={audioTuning}
         />
@@ -343,12 +356,12 @@ function App() {
         isPlaying={isPlaying}
         playbackSpeed={playbackSpeed}
         currentShape={currentShape}
-        journeyEnabled={journeyEnabled}
         onPlayPause={handlePlayPause}
         onSeek={handleSeek}
         onSpeedChange={handleSpeedChange}
         onShapeChange={setCurrentShape}
-        onJourneyToggle={setJourneyEnabled}
+        currentEnvironment={currentEnvironment}
+        onEnvironmentChange={setCurrentEnvironment}
         onReset={handleReset}
         audioTuning={audioTuning}
         onAudioTuningChange={(val) => {
