@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.analyze_audio import router as analyze_router
 from api.generate_params import router as params_router
 from api.audience_score import router as score_router
+from api.soundcloud import router as soundcloud_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,3 +25,4 @@ app.add_middleware(
 app.include_router(analyze_router)
 app.include_router(params_router)
 app.include_router(score_router)
+app.include_router(soundcloud_router)
