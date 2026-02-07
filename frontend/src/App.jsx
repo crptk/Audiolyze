@@ -1,26 +1,25 @@
 'use client';
 
 import { useState } from 'react';
+import VisualizerScene from './components/VisualizerScene';
 import './App.css';
-
-// Placeholder component - replace with your actual Three.js visualizer later
-function VisualizerPlaceholder() {
-  return (
-    <div className="visualizer-placeholder">
-      <div className="placeholder-gradient"></div>
-    </div>
-  );
-}
+import './styles/visualizer.css';
 
 function App() {
+  console.log('[v0] App component rendering');
   const [audioLoaded, setAudioLoaded] = useState(false);
+  const [audioFile, setAudioFile] = useState(null);
+  const [aiParams, setAiParams] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const handleFileSelect = (file) => {
     if (file && (file.type === 'audio/mpeg' || file.type === 'video/mp4' || file.name.endsWith('.m4v'))) {
       console.log('[v0] Audio file loaded:', file.name);
+      setAudioFile(file);
       setAudioLoaded(true);
-      // TODO: Pass file to your visualizer component
+      
+      // TODO: Send audio file to backend for AI analysis
+      // fetchAIParams(file).then(params => setAiParams(params));
     }
   };
 
@@ -50,7 +49,11 @@ function App() {
     <div className="app-container">
       {/* Three.js Visualizer Background (blurred initially) */}
       <div className={`visualizer-background ${audioLoaded ? 'unblurred' : ''}`}>
-        <VisualizerPlaceholder />
+        <VisualizerScene 
+          audioFile={audioFile}
+          aiParams={aiParams}
+          isPlaying={audioLoaded}
+        />
       </div>
 
       {/* Gradient Overlay */}

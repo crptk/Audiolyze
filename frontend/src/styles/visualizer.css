@@ -1,0 +1,15 @@
+/* Three.js Visualizer Background */
+.visualizer-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  filter: blur(40px);
+  transition: filter 1.2s ease-out;
+}
+
+.visualizer-background.unblurred {
+  filter: blur(0px);
+}
