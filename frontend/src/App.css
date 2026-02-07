@@ -1,42 +1,188 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+.app-container {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+  background: #000;
+}
+
+/* Three.js Visualizer Background */
+.visualizer-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  filter: blur(40px);
+  transition: filter 1.2s ease-out;
+}
+
+.visualizer-background.unblurred {
+  filter: blur(0px);
+}
+
+/* Placeholder Visualizer (replace with actual Three.js component) */
+.visualizer-placeholder {
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 30% 50%, rgba(20, 20, 40, 0.8) 0%, rgba(0, 0, 0, 1) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.placeholder-gradient {
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(40, 40, 80, 0.3) 0%, transparent 70%);
+  animation: float 8s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(-50%, -50%); }
+  50% { transform: translate(-30%, -30%); }
+}
+
+/* Gradient Overlay */
+.gradient-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  background: radial-gradient(ellipse at center, transparent 0%, transparent 40%, rgba(0, 0, 0, 0.7) 80%, rgba(0, 0, 0, 0.95) 100%);
+  pointer-events: none;
+}
+
+/* Landing Screen */
+.landing-screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 1.2s ease-out, transform 1.2s ease-out;
+}
+
+.landing-screen.fade-out {
+  opacity: 0;
+  transform: scale(0.95);
+  pointer-events: none;
+}
+
+.content-wrapper {
   text-align: center;
+  color: white;
+  max-width: 600px;
+  padding: 2rem;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* Title */
+.title {
+  font-size: 5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem 0;
+  color: #ffffff;
+  line-height: 1;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+/* Tagline */
+.tagline {
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: #ffffff;
+  margin: 0 0 3rem 0;
+  letter-spacing: 0.01em;
+}
+
+/* Upload Box */
+.upload-box {
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.upload-box:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.upload-box.dragging {
+  border-color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+  transform: scale(1.02);
+}
+
+.upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.upload-text {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: #ffffff;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.upload-icon {
+  width: 48px;
+  height: 48px;
+  color: #ffffff;
+  opacity: 0.8;
+}
+
+.accepted-formats {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .title {
+    font-size: 3.5rem;
   }
-  to {
-    transform: rotate(360deg);
+
+  .tagline {
+    font-size: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .upload-box {
+    padding: 2rem 1.5rem;
+  }
+
+  .upload-text {
+    font-size: 1rem;
+  }
+
+  .upload-icon {
+    width: 40px;
+    height: 40px;
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+@media (max-width: 480px) {
+  .title {
+    font-size: 2.5rem;
   }
-}
 
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
+  .content-wrapper {
+    padding: 1rem;
+  }
 }
