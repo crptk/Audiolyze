@@ -2,7 +2,7 @@ from fastapi import APIRouter
 import os
 import json
 from dotenv import load_dotenv
-from google import genai
+import google.generativeai as genai
 
 load_dotenv()
 
