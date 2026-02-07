@@ -28,10 +28,18 @@ function App() {
     treble: 1.0,
     sensitivity: 1.0,
   });
+  const [audioPlaybackTuning, setAudioPlaybackTuning] = useState({
+    bass: 1.0,
+    mid: 1.0,
+    treble: 1.0,
+    sensitivity: 1.0,
+  });
+  const [tuningLinked, setTuningLinked] = useState(true);
   
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
   const resetVisualizerRef = useRef(null);
+  const audioFiltersRef = useRef(null);
 
   const handleFileSelect = async (file) => {
     if (file && (file.type === 'audio/mpeg' || file.type === 'video/mp4' || file.name.endsWith('.m4v'))) {
@@ -57,16 +65,42 @@ function App() {
         setCurrentTime(0);
       });
 
-      // Setup Web Audio API for visualization
+      // Setup Web Audio API for visualization + EQ filters
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const analyserNode = audioContext.createAnalyser();
       analyserNode.fftSize = 2048;
       
+      // Create EQ filter nodes
+      const bassFilter = audioContext.createBiquadFilter();
+      bassFilter.type = 'lowshelf';
+      bassFilter.frequency.value = 200;
+      bassFilter.gain.value = 0; // dB, 0 = neutral
+
+      const midFilter = audioContext.createBiquadFilter();
+      midFilter.type = 'peaking';
+      midFilter.frequency.value = 1500;
+      midFilter.Q.value = 1.0;
+      midFilter.gain.value = 0;
+
+      const trebleFilter = audioContext.createBiquadFilter();
+      trebleFilter.type = 'highshelf';
+      trebleFilter.frequency.value = 4000;
+      trebleFilter.gain.value = 0;
+
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 1.0;
+
+      // Chain: source -> bass -> mid -> treble -> gain -> analyser -> destination
       const source = audioContext.createMediaElementSource(audio);
-      source.connect(analyserNode);
+      source.connect(bassFilter);
+      bassFilter.connect(midFilter);
+      midFilter.connect(trebleFilter);
+      trebleFilter.connect(gainNode);
+      gainNode.connect(analyserNode);
       analyserNode.connect(audioContext.destination);
       
       audioContextRef.current = audioContext;
+      audioFiltersRef.current = { bassFilter, midFilter, trebleFilter, gainNode };
       setAnalyser(analyserNode);
       
       console.log('[v0] Analyser created and set:', analyserNode);
@@ -149,6 +183,18 @@ function App() {
     setCurrentShape(null);
     setJourneyEnabled(true);
   };
+
+  // Update audio EQ filters when playback tuning changes
+  useEffect(() => {
+    if (!audioFiltersRef.current) return;
+    const { bassFilter, midFilter, trebleFilter, gainNode } = audioFiltersRef.current;
+    
+    // Convert 0-3 multiplier to dB gain: 1.0 = 0dB, 0 = -24dB, 3 = +12dB
+    bassFilter.gain.value = (audioPlaybackTuning.bass - 1.0) * 12;
+    midFilter.gain.value = (audioPlaybackTuning.mid - 1.0) * 12;
+    trebleFilter.gain.value = (audioPlaybackTuning.treble - 1.0) * 12;
+    gainNode.gain.value = audioPlaybackTuning.sensitivity;
+  }, [audioPlaybackTuning]);
 
   // Cleanup
   useEffect(() => {
@@ -275,7 +321,17 @@ function App() {
         onJourneyToggle={setJourneyEnabled}
         onReset={handleReset}
         audioTuning={audioTuning}
-        onAudioTuningChange={setAudioTuning}
+        onAudioTuningChange={(val) => {
+          setAudioTuning(val);
+          if (tuningLinked) setAudioPlaybackTuning(val);
+        }}
+        audioPlaybackTuning={audioPlaybackTuning}
+        onAudioPlaybackTuningChange={(val) => {
+          setAudioPlaybackTuning(val);
+          if (tuningLinked) setAudioTuning(val);
+        }}
+        tuningLinked={tuningLinked}
+        onTuningLinkedChange={setTuningLinked}
       />
     </div>
   );

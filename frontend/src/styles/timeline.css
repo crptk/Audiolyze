@@ -411,6 +411,52 @@
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+/* Tuning Link Toggle */
+.tuning-link-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tuning-link-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #6ec7ff;
+  cursor: pointer;
+}
+
+.tuning-link-icon {
+  width: 16px;
+  height: 16px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.2s ease;
+}
+
+.tuning-link-row:hover .tuning-link-icon {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.tuning-link-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Disabled linked slider */
+.audio-slider.linked-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.audio-slider.linked-disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.4);
+}
+
 /* Journey Mode Toggle */
 .journey-toggle {
   display: flex;

@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import '../styles/timeline.css';
 
-export default function TimelineControls({ 
-  audioFile, 
+export default function TimelineControls({
+  audioFile,
   aiParams,
   currentTime,
   duration,
@@ -20,6 +20,10 @@ export default function TimelineControls({
   onReset,
   audioTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
   onAudioTuningChange,
+  audioPlaybackTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
+  onAudioPlaybackTuningChange,
+  tuningLinked = true,
+  onTuningLinkedChange,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [showManualControls, setShowManualControls] = useState(false);
@@ -43,7 +47,7 @@ export default function TimelineControls({
 
   const handleTimelineClick = (e) => {
     if (!timelineRef.current || !duration) return;
-    
+
     const rect = timelineRef.current.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
     const newTime = Math.max(0, Math.min(duration, percent * duration));
@@ -88,7 +92,7 @@ export default function TimelineControls({
     <div className={`timeline-controls ${aiParams ? 'visible' : ''}`}>
       {/* Manual Controls Dropdown */}
       <div className="manual-controls-wrapper">
-        <button 
+        <button
           className="manual-controls-toggle"
           onClick={() => setShowManualControls(!showManualControls)}
         >
@@ -98,7 +102,7 @@ export default function TimelineControls({
           </svg>
           Manual Controls
         </button>
-        
+
         {showManualControls && (
           <div className="manual-controls-dropdown">
             <div className="dropdown-header">Shape Selection</div>
@@ -118,16 +122,16 @@ export default function TimelineControls({
                 </button>
               ))}
             </div>
-            
-            <div className="dropdown-header" style={{ marginTop: '16px' }}>Audio Tuning</div>
+
+            <div className="dropdown-header" style={{ marginTop: '16px' }}>Audio EQ</div>
             <div className="audio-sliders">
               {[
                 { key: 'bass', label: 'Bass', min: 0, max: 3, step: 0.1 },
                 { key: 'mid', label: 'Mid', min: 0, max: 3, step: 0.1 },
                 { key: 'treble', label: 'Treble', min: 0, max: 3, step: 0.1 },
-                { key: 'sensitivity', label: 'Sensitivity', min: 0.1, max: 3, step: 0.1 },
+                { key: 'sensitivity', label: 'Volume', min: 0.1, max: 3, step: 0.1 },
               ].map(slider => (
-                <div key={slider.key} className="audio-slider-row">
+                <div key={`audio-${slider.key}`} className="audio-slider-row">
                   <label className="audio-slider-label">{slider.label}</label>
                   <input
                     type="range"
@@ -135,7 +139,66 @@ export default function TimelineControls({
                     min={slider.min}
                     max={slider.max}
                     step={slider.step}
-                    value={audioTuning[slider.key]}
+                    value={audioPlaybackTuning[slider.key]}
+                    onChange={(e) => {
+                      onAudioPlaybackTuningChange({
+                        ...audioPlaybackTuning,
+                        [slider.key]: parseFloat(e.target.value),
+                      });
+                    }}
+                  />
+                  <span className="audio-slider-value">{audioPlaybackTuning[slider.key].toFixed(1)}</span>
+                </div>
+              ))}
+            </div>
+
+            <label className="tuning-link-row">
+              <input
+                type="checkbox"
+                className="tuning-link-checkbox"
+                checked={tuningLinked}
+                onChange={(e) => {
+                  onTuningLinkedChange(e.target.checked);
+                  if (e.target.checked) {
+                    onAudioTuningChange({ ...audioPlaybackTuning });
+                  }
+                }}
+              />
+              <svg className="tuning-link-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {tuningLinked ? (
+                  <>
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M16.85 7.15a4 4 0 0 1 0 5.66l-3 3a4 4 0 0 1-5.66-5.66l1.41-1.41" />
+                    <path d="M7.15 16.85a4 4 0 0 1 0-5.66l3-3a4 4 0 0 1 5.66 5.66l-1.41 1.41" />
+                    <line x1="2" y1="2" x2="22" y2="22" />
+                  </>
+                )}
+              </svg>
+              <span className="tuning-link-label">{tuningLinked ? 'Linked' : 'Unlinked'}</span>
+            </label>
+
+            <div className="dropdown-header" style={{ marginTop: '16px' }}>Visualizer Tuning</div>
+            <div className="audio-sliders">
+              {[
+                { key: 'bass', label: 'Bass', min: 0, max: 3, step: 0.1 },
+                { key: 'mid', label: 'Mid', min: 0, max: 3, step: 0.1 },
+                { key: 'treble', label: 'Treble', min: 0, max: 3, step: 0.1 },
+                { key: 'sensitivity', label: 'Sensitivity', min: 0.1, max: 3, step: 0.1 },
+              ].map(slider => (
+                <div key={`vis-${slider.key}`} className="audio-slider-row">
+                  <label className="audio-slider-label">{slider.label}</label>
+                  <input
+                    type="range"
+                    className={`audio-slider ${tuningLinked ? 'linked-disabled' : ''}`}
+                    min={slider.min}
+                    max={slider.max}
+                    step={slider.step}
+                    value={tuningLinked ? audioPlaybackTuning[slider.key] : audioTuning[slider.key]}
+                    disabled={tuningLinked}
                     onChange={(e) => {
                       onAudioTuningChange({
                         ...audioTuning,
@@ -143,7 +206,9 @@ export default function TimelineControls({
                       });
                     }}
                   />
-                  <span className="audio-slider-value">{audioTuning[slider.key].toFixed(1)}</span>
+                  <span className="audio-slider-value">
+                    {(tuningLinked ? audioPlaybackTuning[slider.key] : audioTuning[slider.key]).toFixed(1)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -157,9 +222,9 @@ export default function TimelineControls({
               title={journeyEnabled ? 'Disable Journey Mode' : 'Enable Journey Mode'}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                <path d="M2 17l10 5 10-5"/>
-                <path d="M2 12l10 5 10-5"/>
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
               </svg>
               <span>{journeyEnabled ? 'Journey Mode ON' : 'Journey Mode OFF'}</span>
             </button>
@@ -174,9 +239,9 @@ export default function TimelineControls({
               title="Reset visualizer to initial state"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="23 4 23 10 17 10"/>
-                <polyline points="1 20 1 14 7 14"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
               </svg>
               <span>Reset Visualizer</span>
             </button>
@@ -186,7 +251,7 @@ export default function TimelineControls({
 
       <div className="timeline-container">
         {/* Timeline */}
-        <div 
+        <div
           className="timeline"
           ref={timelineRef}
           onMouseDown={handleMouseDown}
@@ -203,13 +268,13 @@ export default function TimelineControls({
                 <div className="marker-icon">🔄</div>
               </div>
             ))}
-            
+
             {/* Journey mode markers */}
             {duration > 0 && JOURNEY_TIMESTAMPS.map((journey, idx) => (
               <div
                 key={`journey-${idx}`}
                 className="timeline-marker journey-marker"
-                style={{ 
+                style={{
                   left: `${(journey.time / duration) * 100}%`,
                   width: `${(journey.duration / duration) * 100}%`
                 }}
@@ -218,13 +283,13 @@ export default function TimelineControls({
                 <div className="marker-icon">🚀</div>
               </div>
             ))}
-            
-            <div 
-              className="timeline-progress" 
+
+            <div
+              className="timeline-progress"
               style={{ width: `${progress}%` }}
             />
-            <div 
-              className="timeline-handle" 
+            <div
+              className="timeline-handle"
               style={{ left: `${progress}%` }}
             />
           </div>
@@ -240,7 +305,7 @@ export default function TimelineControls({
 
       <div className="controls-container">
         {/* Play/Pause Button */}
-        <button 
+        <button
           className="control-button play-pause"
           onClick={onPlayPause}
           title={isPlaying ? 'Pause' : 'Play'}
@@ -259,28 +324,28 @@ export default function TimelineControls({
 
         {/* Speed Control */}
         <div className="speed-controls">
-          <button 
+          <button
             className={`speed-button ${playbackSpeed === 0.5 ? 'active' : ''}`}
             onClick={() => onSpeedChange(0.5)}
             title="0.5x speed"
           >
             0.5x
           </button>
-          <button 
+          <button
             className={`speed-button ${playbackSpeed === 1 ? 'active' : ''}`}
             onClick={() => onSpeedChange(1)}
             title="Normal speed"
           >
             1x
           </button>
-          <button 
+          <button
             className={`speed-button ${playbackSpeed === 1.5 ? 'active' : ''}`}
             onClick={() => onSpeedChange(1.5)}
             title="1.5x speed"
           >
             1.5x
           </button>
-          <button 
+          <button
             className={`speed-button ${playbackSpeed === 2 ? 'active' : ''}`}
             onClick={() => onSpeedChange(2)}
             title="2x speed"
