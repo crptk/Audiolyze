@@ -42,3 +42,4 @@ urllib3==2.6.3
 uvicorn==0.40.0
 google-generativeai
 yt-dlp
+python-multipart
