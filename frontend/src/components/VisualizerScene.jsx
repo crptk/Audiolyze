@@ -6,6 +6,7 @@ import { OrbitControls } from '@react-three/drei';
 import { useState } from 'react';
 import IdleVisualizer from '../scenes/IdleVisualizer';
 import StarField from './StarField';
+import AuroraRing from './AuroraRing';
 
 export default function VisualizerScene({ 
   audioFile = null, 
@@ -13,6 +14,7 @@ export default function VisualizerScene({
   isPlaying = false,
   analyser = null,
   currentTime = 0,
+  manualShape = null,
   mouseSensitivity = 0.5 // 0.1 to 2.0
 }) {
   const [beatData, setBeatData] = useState({ beatHit: 0, expansion: 0 });
@@ -38,6 +40,13 @@ export default function VisualizerScene({
       {/* Star field environment (beat-reactive) */}
       <StarField beatHit={beatData.beatHit} expansion={beatData.expansion} />
 
+      {/* Aurora Borealis Ring (beat-reactive aura) */}
+      <AuroraRing 
+        beatHit={beatData.beatHit} 
+        bassStrength={beatData.bassStrength || 0}
+        expansion={beatData.expansion} 
+      />
+
       {/* Lighting */}
       <ambientLight intensity={0.35} />
       <pointLight position={[10, 10, 10]} intensity={1.5} />
@@ -49,6 +58,7 @@ export default function VisualizerScene({
         aiParams={aiParams}
         isPlaying={isPlaying}
         currentTime={currentTime}
+        manualShape={manualShape}
         onBeatUpdate={setBeatData}
       />
 

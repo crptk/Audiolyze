@@ -14,72 +14,37 @@ logger.setLevel(logging.INFO)
 
 @router.post("/analyze")
 async def analyze_audio(file: UploadFile = File(...)):
-    """
-    Analyze uploaded audio and extract normalized features
-    suitable for AI-driven visualization.
-    """
     t0 = time.time()
     logger.info("=== /analyze START ===")
-    logger.info("Incoming file: name=%s content_type=%s", file.filename, file.content_type)
 
-    # -------------------------
-    # Save uploaded file temp
-    # -------------------------
     suffix = os.path.splitext(file.filename)[1] or ".bin"
-    logger.info("Saving upload to temp file (suffix=%s)...", suffix)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         raw = await file.read()
         tmp.write(raw)
         tmp_path = tmp.name
 
-    logger.info("Saved temp file: %s (bytes=%d)", tmp_path, len(raw))
-
     try:
-        # -------------------------
-        # Load audio
-        # -------------------------
-        logger.info("Loading audio with librosa.load(mono=True)...")
+        # ---- Load audio ----
         y, sr = librosa.load(tmp_path, mono=True)
-        logger.info("Loaded audio: sr=%d samples=%d seconds=%.2f",
-                    sr, len(y), librosa.get_duration(y=y, sr=sr))
-
         duration = float(librosa.get_duration(y=y, sr=sr))
 
-        # -------------------------
-        # Feature extraction
-        # -------------------------
-        logger.info("Extracting tempo (beat_track)...")
+        # ---- Global features ----
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-        logger.info("Tempo (raw BPM): %.2f", float(tempo))
 
-        logger.info("Extracting RMS energy...")
         rms = librosa.feature.rms(y=y)[0]
         rms_energy = float(np.mean(rms))
-        logger.info("RMS mean (raw): %.6f | RMS min/max: %.6f/%.6f",
-                    rms_energy, float(np.min(rms)), float(np.max(rms)))
 
-        logger.info("Computing STFT magnitude...")
         stft = np.abs(librosa.stft(y))
         freqs = librosa.fft_frequencies(sr=sr)
 
-        logger.info("Extracting bass energy (<150Hz)...")
-        bass_mask = freqs < 150
-        bass_energy = float(np.mean(stft[bass_mask]))
-        logger.info("Bass energy (raw): %.6f", bass_energy)
+        bass_energy = float(np.mean(stft[freqs < 150]))
 
-        logger.info("Extracting spectral centroid (brightness)...")
-        spectral_centroid = float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr)))
-        logger.info("Spectral centroid (raw): %.2f Hz", spectral_centroid)
+        spectral_centroid = float(
+            np.mean(librosa.feature.spectral_centroid(y=y, sr=sr))
+        )
 
-        logger.info("Extracting zero crossing rate (percussiveness)...")
         zcr = float(np.mean(librosa.feature.zero_crossing_rate(y)))
-        logger.info("Zero crossing rate (raw): %.6f", zcr)
-
-        # -------------------------
-        # Normalization
-        # -------------------------
-        logger.info("Normalizing features to stable ranges...")
 
         features = {
             "tempo": float(np.clip(float(tempo) / 200.0, 0.0, 1.0)),
@@ -90,18 +55,54 @@ async def analyze_audio(file: UploadFile = File(...)):
             "duration": duration,
         }
 
-        logger.info("Normalized features: %s", features)
-        logger.info("=== /analyze END (%.2fs) ===", time.time() - t0)
+        # ---- Beatmap extraction (IMPORTANT PART) ----
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
 
-        return {"ok": True, "features": features}
+        tempo_bt, beat_frames = librosa.beat.beat_track(
+            onset_envelope=onset_env,
+            sr=sr
+        )
 
-    except Exception:
-        logger.exception("Error during /analyze processing")
-        raise
+        logger.info("Audio loaded: y=%d samples, sr=%d", len(y), sr)
+
+
+        # Fallback if no beats detected
+        if len(beat_frames) == 0:
+            beat_frames = librosa.onset.onset_detect(
+                onset_envelope=onset_env,
+                sr=sr,
+                backtrack=False,
+                delta=0.2
+            )
+
+        beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+
+        beat_strengths = onset_env[
+            np.clip(beat_frames, 0, len(onset_env) - 1)
+        ]
+
+        max_s = float(np.max(beat_strengths)) if len(beat_strengths) else 1.0
+        beat_strengths = beat_strengths / max_s
+
+        beats = [
+            {
+                "time": float(t),
+                "strength": float(np.clip(s, 0, 1))
+            }
+            for t, s in zip(beat_times, beat_strengths)
+        ]
+
+        logger.info("Detected %d beats", len(beats))
+        logger.info("Beat frames: %s", beat_frames[:10])
+
+        return {
+            "ok": True,
+            "features": features,
+            "beatmap": {
+                "tempo": float(tempo_bt),
+                "beats": beats
+            }
+        }
 
     finally:
-        try:
-            os.remove(tmp_path)
-            logger.info("Temp file cleaned up: %s", tmp_path)
-        except Exception:
-            logger.warning("Failed to delete temp file: %s", tmp_path)
+        os.remove(tmp_path)

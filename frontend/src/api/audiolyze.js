@@ -1,10 +1,10 @@
 const API_BASE = "http://127.0.0.1:8000";
 
 export async function fetchAIParams(file) {
-  // 1️Analyze audio
   const formData = new FormData();
   formData.append("file", file);
 
+  // 1️⃣ Analyze audio ONCE
   const analyzeRes = await fetch(`${API_BASE}/analyze`, {
     method: "POST",
     body: formData,
@@ -16,12 +16,13 @@ export async function fetchAIParams(file) {
 
   const analyzeData = await analyzeRes.json();
 
-  // Generate visualizer params
+  const beats = analyzeData.beatmap?.beats || [];
+  console.log('[v0] Loaded', beats.length, 'beat timestamps from backend');
+
+  // 2️⃣ Generate visualizer params
   const paramsRes = await fetch(`${API_BASE}/generate-params`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(analyzeData.features),
   });
 
@@ -31,5 +32,8 @@ export async function fetchAIParams(file) {
 
   const paramsData = await paramsRes.json();
 
-  return paramsData.params;
+  return {
+    ...paramsData.params,
+    beats
+  };
 }

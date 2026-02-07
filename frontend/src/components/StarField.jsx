@@ -47,7 +47,7 @@ export default function StarField({ beatHit = 0, expansion = 0 }) {
       beatEnvelopeRef.current = THREE.MathUtils.lerp(
         beatEnvelopeRef.current,
         0,
-        0.35
+        0.05
       );
     }
 

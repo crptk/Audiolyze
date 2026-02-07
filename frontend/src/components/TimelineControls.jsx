@@ -12,10 +12,22 @@ export default function TimelineControls({
   playbackSpeed,
   onPlayPause,
   onSeek,
-  onSpeedChange
+  onSpeedChange,
+  onShapeChange,
+  currentShape
 }) {
   const [isDragging, setIsDragging] = useState(false);
+  const [showManualControls, setShowManualControls] = useState(false);
   const timelineRef = useRef(null);
+
+  const shapes = [
+    { id: 'jellyfish', label: 'Jellyfish', icon: '🪼' },
+    { id: 'sphere', label: 'Sphere', icon: '⚫' },
+    { id: 'torus', label: 'Torus', icon: '🍩' },
+    { id: 'spiral', label: 'Spiral', icon: '🌀' },
+    { id: 'cube', label: 'Cube', icon: '🧊' },
+    { id: 'wave', label: 'Wave', icon: '🌊' }
+  ];
 
   const formatTime = (seconds) => {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -63,6 +75,42 @@ export default function TimelineControls({
 
   return (
     <div className={`timeline-controls ${aiParams ? 'visible' : ''}`}>
+      {/* Manual Controls Dropdown */}
+      <div className="manual-controls-wrapper">
+        <button 
+          className="manual-controls-toggle"
+          onClick={() => setShowManualControls(!showManualControls)}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" />
+          </svg>
+          Manual Controls
+        </button>
+        
+        {showManualControls && (
+          <div className="manual-controls-dropdown">
+            <div className="dropdown-header">Shape Selection</div>
+            <div className="shape-grid">
+              {shapes.map(shape => (
+                <button
+                  key={shape.id}
+                  className={`shape-button ${currentShape === shape.id ? 'active' : ''}`}
+                  onClick={() => {
+                    onShapeChange(shape.id);
+                    setShowManualControls(false);
+                  }}
+                  title={shape.label}
+                >
+                  <span className="shape-icon">{shape.icon}</span>
+                  <span className="shape-label">{shape.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="timeline-container">
         {/* Timeline */}
         <div 

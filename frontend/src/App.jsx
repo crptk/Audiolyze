@@ -19,6 +19,7 @@ function App() {
   const [duration, setDuration] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [analyser, setAnalyser] = useState(null);
+  const [currentShape, setCurrentShape] = useState('jellyfish');
   
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -140,6 +141,7 @@ function App() {
           isPlaying={isPlaying}
           analyser={analyser}
           currentTime={currentTime}
+          manualShape={currentShape}
         />
       </div>
 
@@ -204,9 +206,11 @@ function App() {
         duration={duration}
         isPlaying={isPlaying}
         playbackSpeed={playbackSpeed}
+        currentShape={currentShape}
         onPlayPause={handlePlayPause}
         onSeek={handleSeek}
         onSpeedChange={handleSpeedChange}
+        onShapeChange={setCurrentShape}
       />
     </div>
   );
