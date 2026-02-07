@@ -16,7 +16,8 @@ export default function TimelineControls({
   onShapeChange,
   currentShape,
   onJourneyToggle,
-  journeyEnabled
+  journeyEnabled,
+  onReset
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [showManualControls, setShowManualControls] = useState(false);
@@ -75,6 +76,12 @@ export default function TimelineControls({
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  // Hardcoded event timestamps (will come from AI params later)
+  const SHAPE_TIMESTAMPS = [30, 60, 90, 120];
+  const JOURNEY_TIMESTAMPS = [
+    { time: 45, duration: 25 },
+  ];
+
   return (
     <div className={`timeline-controls ${aiParams ? 'visible' : ''}`}>
       {/* Manual Controls Dropdown */}
@@ -125,6 +132,23 @@ export default function TimelineControls({
               </svg>
               <span>{journeyEnabled ? 'Journey Mode ON' : 'Journey Mode OFF'}</span>
             </button>
+
+            <div className="dropdown-header" style={{ marginTop: '16px' }}>Controls</div>
+            <button
+              className="reset-button"
+              onClick={() => {
+                onReset();
+                setShowManualControls(false);
+              }}
+              title="Reset visualizer to initial state"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+              <span>Reset Visualizer</span>
+            </button>
           </div>
         )}
       </div>
@@ -137,6 +161,33 @@ export default function TimelineControls({
           onMouseDown={handleMouseDown}
         >
           <div className="timeline-track">
+            {/* Shape change markers */}
+            {duration > 0 && SHAPE_TIMESTAMPS.map((time, idx) => (
+              <div
+                key={`shape-${idx}`}
+                className="timeline-marker shape-marker"
+                style={{ left: `${(time / duration) * 100}%` }}
+                title={`Shape change at ${formatTime(time)}`}
+              >
+                <div className="marker-icon">🔄</div>
+              </div>
+            ))}
+            
+            {/* Journey mode markers */}
+            {duration > 0 && JOURNEY_TIMESTAMPS.map((journey, idx) => (
+              <div
+                key={`journey-${idx}`}
+                className="timeline-marker journey-marker"
+                style={{ 
+                  left: `${(journey.time / duration) * 100}%`,
+                  width: `${(journey.duration / duration) * 100}%`
+                }}
+                title={`Journey mode ${formatTime(journey.time)} - ${formatTime(journey.time + journey.duration)}`}
+              >
+                <div className="marker-icon">🚀</div>
+              </div>
+            ))}
+            
             <div 
               className="timeline-progress" 
               style={{ width: `${progress}%` }}

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { fetchAIParams } from "./api/audiolyze";
 import VisualizerScene from './components/VisualizerScene';
 import TimelineControls from './components/TimelineControls';
+import BackButton from './components/BackButton';
 import './App.css';
 import './styles/visualizer.css';
 
@@ -19,11 +20,12 @@ function App() {
   const [duration, setDuration] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [analyser, setAnalyser] = useState(null);
-  const [currentShape, setCurrentShape] = useState('jellyfish');
+  const [currentShape, setCurrentShape] = useState(null);
   const [journeyEnabled, setJourneyEnabled] = useState(true);
   
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
+  const resetVisualizerRef = useRef(null);
 
   const handleFileSelect = async (file) => {
     if (file && (file.type === 'audio/mpeg' || file.type === 'video/mp4' || file.name.endsWith('.m4v'))) {
@@ -97,6 +99,51 @@ function App() {
     setPlaybackSpeed(speed);
   };
 
+  const handleReset = () => {
+    if (!audioRef.current) return;
+    
+    // Reset audio playback
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setPlaybackSpeed(1);
+    audioRef.current.playbackRate = 1;
+    
+    // Reset visualizer state
+    setCurrentShape(null);
+    setJourneyEnabled(true);
+    
+    // Reset camera and visualizer position
+    if (resetVisualizerRef.current) {
+      resetVisualizerRef.current();
+    }
+  };
+
+  const handleBackToMenu = () => {
+    // Clean up audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    
+    // Reset all state
+    setAudioFile(null);
+    setAudioLoaded(false);
+    setAiParams(null);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setPlaybackSpeed(1);
+    setAnalyser(null);
+    setCurrentShape(null);
+    setJourneyEnabled(true);
+  };
+
   // Cleanup
   useEffect(() => {
     return () => {
@@ -134,6 +181,9 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* Back Button */}
+      <BackButton onClick={handleBackToMenu} visible={audioLoaded} />
+
       {/* Three.js Visualizer Background (blurred initially) */}
       <div className={`visualizer-background ${audioLoaded ? 'unblurred' : ''}`}>
         <VisualizerScene 
@@ -144,6 +194,7 @@ function App() {
           currentTime={currentTime}
           manualShape={currentShape}
           journeyEnabled={journeyEnabled}
+          resetRef={resetVisualizerRef}
         />
       </div>
 
@@ -215,6 +266,7 @@ function App() {
         onSpeedChange={handleSpeedChange}
         onShapeChange={setCurrentShape}
         onJourneyToggle={setJourneyEnabled}
+        onReset={handleReset}
       />
     </div>
   );

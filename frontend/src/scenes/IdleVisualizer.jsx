@@ -110,7 +110,6 @@ export default function IdleVisualizer({
     }
   }, [params.beats]);
 
-  
   // Initialize Butterchurn audio analyzer
   useEffect(() => {
     if (analyser && !audioAnalyzerRef.current) {
@@ -153,23 +152,20 @@ export default function IdleVisualizer({
     }
   }, [manualShape, pointCount, targetPositions]);
 
-  // Check for shape transitions based on timestamp
+  // Check for shape transitions based on timestamp (range-based for reliability)
   useEffect(() => {
-    if (!isPlaying || manualShape) return; // Skip auto transitions if manual shape is set
-    
-    const currentTimestamp = Math.floor(currentTime);
+    if (!isPlaying) return;
     
     SHAPE_TIMESTAMPS.forEach(ts => {
-      if (currentTimestamp === ts.time && lastTimestampRef.current !== ts.time) {
+      // Trigger if within 0.5s window of the timestamp and haven't triggered this one yet
+      if (currentTime >= ts.time && currentTime < ts.time + 0.5 && lastTimestampRef.current !== ts.time) {
         lastTimestampRef.current = ts.time;
         
         // Select random shape different from current
         const availableShapes = Object.values(SHAPES).filter(s => s !== currentShapeRef.current);
         const newShape = availableShapes[Math.floor(Math.random() * availableShapes.length)];
         
-        console.log('[v0] Shape transition:', currentShapeRef.current, '→', newShape);
-        
-        // Generate target shape using appropriate generator
+        // Generate target shape
         const newPositions = SHAPE_GENERATORS[newShape](pointCount);
         targetPositions.set(newPositions);
         targetShapeRef.current = newShape;
@@ -247,38 +243,49 @@ export default function IdleVisualizer({
     const vocalSpeedMultiplier = 1 + audioState.particleSpeed * 4;
     timeRef.current += delta * baseSpeed * vocalSpeedMultiplier;
 
-    // Handle shape morphing - faster and smoother
+    // Handle shape morphing - slow and fluid (~3 seconds)
     if (targetShapeRef.current && morphProgressRef.current < 1) {
-      morphProgressRef.current += delta * 0.8; // Morph over ~1.25 seconds
+      morphProgressRef.current += delta * 0.35;
       
       if (morphProgressRef.current >= 1) {
         morphProgressRef.current = 1;
         originalPositions.set(targetPositions);
         currentShapeRef.current = targetShapeRef.current;
         targetShapeRef.current = null;
-        console.log('[v0] Morph complete:', currentShapeRef.current);
       }
     }
 
     // Update particle positions
     const positionAttribute = pointsRef.current.geometry.attributes.position;
-    const positions = positionAttribute.array;
+    const posArr = positionAttribute.array;
     const isMorphing = targetShapeRef.current !== null;
     const morphProgress = morphProgressRef.current;
 
-    // Create morphed positions array if needed
-    const morphedPositions = isMorphing ? new Float32Array(originalPositions.length) : originalPositions;
-    
     if (isMorphing) {
-      const easeProgress = morphProgress * morphProgress * (3 - 2 * morphProgress); // Smoothstep
-      for (let i = 0; i < morphedPositions.length; i++) {
-        morphedPositions[i] = THREE.MathUtils.lerp(originalPositions[i], targetPositions[i], easeProgress);
+      // Smoothstep easing for position interpolation
+      const t = morphProgress * morphProgress * (3 - 2 * morphProgress);
+      
+      // Apply OLD shape motion to original positions
+      const oldMotionPos = new Float32Array(originalPositions.length);
+      oldMotionPos.set(originalPositions);
+      const currentMotion = SHAPE_MOTIONS[currentShapeRef.current];
+      currentMotion(oldMotionPos, originalPositions, audioState, timeRef, params);
+      
+      // Apply NEW shape motion to target positions
+      const newMotionPos = new Float32Array(targetPositions.length);
+      newMotionPos.set(targetPositions);
+      const targetMotion = SHAPE_MOTIONS[targetShapeRef.current];
+      targetMotion(newMotionPos, targetPositions, audioState, timeRef, params);
+      
+      // Blend between old and new motion results
+      for (let i = 0; i < posArr.length; i++) {
+        posArr[i] = THREE.MathUtils.lerp(oldMotionPos[i], newMotionPos[i], t);
       }
+    } else {
+      // No morph -- apply current shape motion directly
+      const currentMotion = SHAPE_MOTIONS[currentShapeRef.current];
+      currentMotion(posArr, originalPositions, audioState, timeRef, params);
     }
-
-    // Apply shape-specific motion
-    const currentMotion = SHAPE_MOTIONS[currentShapeRef.current];
-    currentMotion(positions, morphedPositions, audioState, timeRef, params);
 
     positionAttribute.needsUpdate = true;
 
@@ -297,14 +304,9 @@ export default function IdleVisualizer({
       const hue = params.colorScheme.hueBase - audioState.vocalEnergy * 0.4;
       const lightness = params.colorScheme.brightness + audioState.beatHit * 0.3;
       
-      const intensity =
-        1.4 +
-        audioState.vocalEnergy * 1.2 +
-        audioState.beatHit * 2.2;
-
-    materialRef.current.color
-      .setHSL(hue, params.colorScheme.saturation, lightness)
-      .multiplyScalar(THREE.MathUtils.clamp(intensity, 1.0, 3.2));
+      materialRef.current.color
+        .setHSL(hue, params.colorScheme.saturation, lightness)
+        .multiplyScalar(1.8 + audioState.vocalEnergy * 1.5 + audioState.beatHit * 5.0);
     }
 
     // Rotation: Driven by vocal energy (particle movement)
@@ -313,12 +315,18 @@ export default function IdleVisualizer({
       pointsRef.current.rotation.y += delta * rotationSpeed;
     }
 
-    // Send beat data to parent for star field and aurora ring
+    // Send beat data + current color to parent for star field, aurora ring, journey
     if (onBeatUpdate) {
+      const hue = params.colorScheme.hueBase - audioState.vocalEnergy * 0.4;
+      const sat = params.colorScheme.saturation;
+      const light = params.colorScheme.brightness + audioState.beatHit * 0.3;
       onBeatUpdate({
         beatHit: audioState.beatHit,
         expansion: audioState.expansion,
-        bassStrength: audioState.bassStrength
+        bassStrength: audioState.bassStrength,
+        hue,
+        saturation: sat,
+        lightness: light,
       });
     }
   });

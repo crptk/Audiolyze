@@ -7,135 +7,167 @@ import * as THREE from 'three';
 export default function JourneyMode({ 
   isActive = false,
   journeyProgress = 0,
-  visualizerRef = null
+  hue = 0.78,
+  saturation = 1.0,
+  lightness = 0.6,
 }) {
   const particlesRef = useRef();
   const lightStreamsRef = useRef();
+  const particleMaterialRef = useRef();
+  const streamMaterialRef = useRef();
   
-  const PARTICLE_COUNT = 800;
-  const STREAM_COUNT = 40;
+  const PARTICLE_COUNT = 600;
+  const STREAM_COUNT = 50;
 
-  // Flying particles that pass by
-  const { particlePositions, particleVelocities } = useMemo(() => {
+  // Constant movement speed - particles always rush past at this rate
+  const BASE_SPEED = 1.8;
+
+  // Pre-position all particles in a tunnel ahead of the camera
+  const { particlePositions, particleSpeeds } = useMemo(() => {
     const positions = new Float32Array(PARTICLE_COUNT * 3);
-    const velocities = new Float32Array(PARTICLE_COUNT * 3);
+    const speeds = new Float32Array(PARTICLE_COUNT);
     
     for (let i = 0; i < PARTICLE_COUNT; i++) {
+      // Spread particles in a cylindrical tunnel around the Z axis
       const angle = Math.random() * Math.PI * 2;
-      const radius = 50 + Math.random() * 100;
-      const height = (Math.random() - 0.5) * 100;
+      const radius = 8 + Math.random() * 60;
       
       positions[i * 3] = Math.cos(angle) * radius;
-      positions[i * 3 + 1] = height;
-      positions[i * 3 + 2] = Math.sin(angle) * radius;
+      positions[i * 3 + 1] = Math.sin(angle) * radius;
+      // Distribute along the Z axis from far away to just past camera
+      positions[i * 3 + 2] = -200 + Math.random() * 260;
       
-      velocities[i * 3] = (Math.random() - 0.5) * 0.5;
-      velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.5;
-      velocities[i * 3 + 2] = -Math.random() * 2 - 1;
+      // Each particle has a slightly different speed for parallax
+      speeds[i] = 0.6 + Math.random() * 0.8;
     }
     
-    return { particlePositions: positions, particleVelocities: velocities };
+    return { particlePositions: positions, particleSpeeds: speeds };
   }, []);
 
-  // Light streams
-  const { streamGeometry } = useMemo(() => {
+  // Light streams - long streaks that rush past
+  const { streamPositions, streamColors, streamSpeeds } = useMemo(() => {
     const positions = new Float32Array(STREAM_COUNT * 2 * 3);
     const colors = new Float32Array(STREAM_COUNT * 2 * 3);
+    const speeds = new Float32Array(STREAM_COUNT);
     
     for (let i = 0; i < STREAM_COUNT; i++) {
-      const angle = (i / STREAM_COUNT) * Math.PI * 2 + Math.random();
-      const radius = 60 + Math.random() * 80;
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 15 + Math.random() * 50;
       const x = Math.cos(angle) * radius;
-      const z = Math.sin(angle) * radius;
-      const y = (Math.random() - 0.5) * 80;
+      const y = Math.sin(angle) * radius;
+      const z = -200 + Math.random() * 260;
+      const streakLength = 15 + Math.random() * 25;
       
-      // Start point
+      // Start point (front)
       positions[i * 6] = x;
       positions[i * 6 + 1] = y;
       positions[i * 6 + 2] = z;
       
-      // End point (behind)
+      // End point (tail, further behind)
       positions[i * 6 + 3] = x;
       positions[i * 6 + 4] = y;
-      positions[i * 6 + 5] = z + 30;
+      positions[i * 6 + 5] = z - streakLength;
       
-      // Color gradient (cyan to purple)
-      const t = i / STREAM_COUNT;
-      const r = 0.3 + t * 0.7;
-      const g = 0.5;
-      const b = 1.0;
+      // Color: bright head, dim tail
+      const hue = 0.55 + Math.random() * 0.15; // cyan to blue range
+      const color = new THREE.Color().setHSL(hue, 0.8, 0.7);
+      const tailColor = new THREE.Color().setHSL(hue, 0.6, 0.3);
       
-      colors[i * 6] = r;
-      colors[i * 6 + 1] = g;
-      colors[i * 6 + 2] = b;
-      colors[i * 6 + 3] = r * 0.3;
-      colors[i * 6 + 4] = g * 0.3;
-      colors[i * 6 + 5] = b * 0.3;
+      colors[i * 6] = color.r;
+      colors[i * 6 + 1] = color.g;
+      colors[i * 6 + 2] = color.b;
+      colors[i * 6 + 3] = tailColor.r;
+      colors[i * 6 + 4] = tailColor.g;
+      colors[i * 6 + 5] = tailColor.b;
+      
+      speeds[i] = 0.8 + Math.random() * 0.6;
     }
     
-    return { streamGeometry: { positions, colors } };
+    return { streamPositions: positions, streamColors: colors, streamSpeeds: speeds };
   }, []);
 
   useFrame((state, delta) => {
-    if (!isActive || journeyProgress <= 0) return;
+    if (!isActive && journeyProgress <= 0) return;
 
-    const speed = journeyProgress * 2;
-    const moveSpeed = speed * delta * 20;
+    // Fade in during first 15%, fade out during last 15%
+    let opacity = 1;
+    if (journeyProgress < 0.15) {
+      opacity = journeyProgress / 0.15;
+    } else if (journeyProgress > 0.85) {
+      opacity = (1 - journeyProgress) / 0.15;
+    }
+    opacity = Math.max(0, Math.min(1, opacity));
 
-    // Move visualizer forward through space
-    if (visualizerRef?.current) {
-      visualizerRef.current.position.z += moveSpeed;
-      
-      // Move camera and its target along with the visualizer
-      state.camera.position.z += moveSpeed;
-      
-      // Update OrbitControls target to follow visualizer
-      if (state.controls && state.controls.target) {
-        state.controls.target.z += moveSpeed;
-        state.controls.update();
+    // Update material opacity for smooth fade + sync color with visualizer
+    if (particleMaterialRef.current) {
+      particleMaterialRef.current.opacity = opacity * 0.7;
+      particleMaterialRef.current.color.setHSL(hue, saturation, lightness + 0.2);
+    }
+    if (streamMaterialRef.current) {
+      streamMaterialRef.current.opacity = opacity * 0.6;
+      // Update stream vertex colors to match visualizer hue
+      if (lightStreamsRef.current) {
+        const colors = lightStreamsRef.current.geometry.attributes.color.array;
+        for (let i = 0; i < STREAM_COUNT; i++) {
+          const hueVariation = hue + (Math.random() - 0.5) * 0.05;
+          const headColor = new THREE.Color().setHSL(hueVariation, saturation * 0.8, lightness + 0.15);
+          const tailColor = new THREE.Color().setHSL(hueVariation, saturation * 0.6, lightness * 0.5);
+          colors[i * 6] = headColor.r;
+          colors[i * 6 + 1] = headColor.g;
+          colors[i * 6 + 2] = headColor.b;
+          colors[i * 6 + 3] = tailColor.r;
+          colors[i * 6 + 4] = tailColor.g;
+          colors[i * 6 + 5] = tailColor.b;
+        }
+        lightStreamsRef.current.geometry.attributes.color.needsUpdate = true;
       }
     }
 
-    // Animate flying particles
+    // Particles always move at constant speed (no acceleration)
     if (particlesRef.current) {
       const positions = particlesRef.current.geometry.attributes.position.array;
       
       for (let i = 0; i < PARTICLE_COUNT; i++) {
-        positions[i * 3] += particleVelocities[i * 3] * speed * delta * 60;
-        positions[i * 3 + 1] += particleVelocities[i * 3 + 1] * speed * delta * 60;
-        positions[i * 3 + 2] += particleVelocities[i * 3 + 2] * speed * delta * 60;
+        // Move toward camera at constant speed
+        positions[i * 3 + 2] += BASE_SPEED * particleSpeeds[i] * delta * 60;
         
-        // Reset particle if it goes behind camera
-        if (positions[i * 3 + 2] > state.camera.position.z + 20) {
+        // When particle passes camera, respawn far behind
+        if (positions[i * 3 + 2] > 80) {
           const angle = Math.random() * Math.PI * 2;
-          const radius = 50 + Math.random() * 100;
+          const radius = 8 + Math.random() * 60;
           positions[i * 3] = Math.cos(angle) * radius;
-          positions[i * 3 + 1] = (Math.random() - 0.5) * 100;
-          positions[i * 3 + 2] = state.camera.position.z - 150;
+          positions[i * 3 + 1] = Math.sin(angle) * radius;
+          positions[i * 3 + 2] = -180 - Math.random() * 60;
         }
       }
       
       particlesRef.current.geometry.attributes.position.needsUpdate = true;
     }
 
-    // Animate light streams
+    // Light streams always move at constant speed
     if (lightStreamsRef.current) {
       const positions = lightStreamsRef.current.geometry.attributes.position.array;
       
       for (let i = 0; i < STREAM_COUNT; i++) {
-        positions[i * 6 + 2] += speed * delta * 80;
-        positions[i * 6 + 5] += speed * delta * 80;
+        const moveAmount = BASE_SPEED * streamSpeeds[i] * delta * 60;
         
-        // Reset stream if it passes camera
-        if (positions[i * 6 + 2] > state.camera.position.z + 50) {
-          const angle = (i / STREAM_COUNT) * Math.PI * 2 + Math.random();
-          const radius = 60 + Math.random() * 80;
+        // Move both endpoints forward
+        positions[i * 6 + 2] += moveAmount;
+        positions[i * 6 + 5] += moveAmount;
+        
+        // Respawn when head passes camera
+        if (positions[i * 6 + 2] > 80) {
+          const angle = Math.random() * Math.PI * 2;
+          const radius = 15 + Math.random() * 50;
+          const streakLength = 15 + Math.random() * 25;
+          const z = -180 - Math.random() * 60;
+          
           positions[i * 6] = Math.cos(angle) * radius;
-          positions[i * 6 + 1] = (Math.random() - 0.5) * 80;
-          positions[i * 6 + 2] = state.camera.position.z - 200;
+          positions[i * 6 + 1] = Math.sin(angle) * radius;
+          positions[i * 6 + 2] = z;
           positions[i * 6 + 3] = positions[i * 6];
           positions[i * 6 + 4] = positions[i * 6 + 1];
-          positions[i * 6 + 5] = positions[i * 6 + 2] + 30;
+          positions[i * 6 + 5] = z - streakLength;
         }
       }
       
@@ -145,7 +177,7 @@ export default function JourneyMode({
 
   return (
     <group visible={isActive && journeyProgress > 0}>
-      {/* Flying particles */}
+      {/* Rushing particles */}
       <points ref={particlesRef}>
         <bufferGeometry>
           <bufferAttribute
@@ -156,35 +188,38 @@ export default function JourneyMode({
           />
         </bufferGeometry>
         <pointsMaterial
-          size={0.6}
-          color="#88ccff"
+          ref={particleMaterialRef}
+          size={0.4}
+          color="#aaddff"
           transparent
-          opacity={0.8}
+          opacity={0}
+          depthWrite={false}
           blending={THREE.AdditiveBlending}
         />
       </points>
 
-      {/* Light streams */}
+      {/* Light streaks */}
       <lineSegments ref={lightStreamsRef}>
         <bufferGeometry>
           <bufferAttribute
             attach="attributes-position"
             count={STREAM_COUNT * 2}
-            array={streamGeometry.positions}
+            array={streamPositions}
             itemSize={3}
           />
           <bufferAttribute
             attach="attributes-color"
             count={STREAM_COUNT * 2}
-            array={streamGeometry.colors}
+            array={streamColors}
             itemSize={3}
           />
         </bufferGeometry>
         <lineBasicMaterial
+          ref={streamMaterialRef}
           vertexColors
           transparent
-          opacity={0.7}
-          linewidth={2}
+          opacity={0}
+          depthWrite={false}
           blending={THREE.AdditiveBlending}
         />
       </lineSegments>

@@ -75,6 +75,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   opacity: 0;
   transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 3;
 }
 
 .timeline:hover .timeline-handle {
@@ -83,6 +84,62 @@
 
 .timeline-handle:active {
   transform: translate(-50%, -50%) scale(1.2);
+}
+
+/* Timeline Markers */
+.timeline-marker {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.shape-marker {
+  width: 3px;
+  height: 20px;
+  background: linear-gradient(180deg, rgba(255, 110, 199, 0.8) 0%, rgba(255, 110, 199, 0.3) 100%);
+  border-radius: 2px;
+}
+
+.shape-marker .marker-icon {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.timeline:hover .shape-marker .marker-icon {
+  opacity: 1;
+}
+
+.journey-marker {
+  height: 100%;
+  background: linear-gradient(90deg, 
+    rgba(110, 199, 255, 0.2) 0%, 
+    rgba(110, 199, 255, 0.3) 50%, 
+    rgba(110, 199, 255, 0.2) 100%
+  );
+  border-left: 2px solid rgba(110, 199, 255, 0.6);
+  border-right: 2px solid rgba(110, 199, 255, 0.6);
+}
+
+.journey-marker .marker-icon {
+  position: absolute;
+  top: -26px;
+  left: 4px;
+  font-size: 16px;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.timeline:hover .journey-marker .marker-icon {
+  opacity: 1;
 }
 
 /* Time Display */

@@ -17,53 +17,79 @@ export default function VisualizerScene({
   currentTime = 0,
   manualShape = null,
   journeyEnabled = true,
-  mouseSensitivity = 0.5 // 0.1 to 2.0
+  mouseSensitivity = 0.5, // 0.1 to 2.0
+  resetRef = null
 }) {
   const [beatData, setBeatData] = useState({ beatHit: 0, expansion: 0 });
   const [journeyActive, setJourneyActive] = useState(false);
   const [journeyProgress, setJourneyProgress] = useState(0);
   const visualizerGroupRef = useRef();
+  const cameraRef = useRef();
+  const controlsRef = useRef();
   
-  // Hardcoded journey timestamps (AI will provide these later)
+  // Single journey sequence (AI will provide this later)
   const JOURNEY_TIMESTAMPS = [
-    { time: 45, duration: 10 }, // Journey at 45s for 10 seconds
-    { time: 90, duration: 8 },
+    { time: 45, duration: 25 }, // One journey at 45s lasting 25 seconds
   ];
+
+  // Expose reset function to parent
+  useEffect(() => {
+    if (resetRef) {
+      resetRef.current = () => {
+        // Reset camera orbit to default position
+        if (controlsRef.current) {
+          controlsRef.current.target.set(0, 0, 0);
+          controlsRef.current.object.position.set(0, 0, 35);
+          controlsRef.current.update();
+        }
+        
+        // Reset journey state
+        setJourneyActive(false);
+        setJourneyProgress(0);
+      };
+    }
+  }, [resetRef]);
 
   // Check for journey mode triggers
   useEffect(() => {
-    if (!isPlaying || !journeyEnabled) return;
-    
-    JOURNEY_TIMESTAMPS.forEach(journey => {
-      const timeInJourney = currentTime - journey.time;
-      
-      if (timeInJourney >= 0 && timeInJourney < journey.duration) {
-        if (!journeyActive) {
-          console.log('[v0] Journey mode activated at', journey.time, 's');
-          setJourneyActive(true);
-        }
-        // Smooth ease in/out progress
-        const progress = timeInJourney / journey.duration;
-        const smoothProgress = progress < 0.5 
-          ? 2 * progress * progress 
-          : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-        setJourneyProgress(smoothProgress);
-      } else if (timeInJourney >= journey.duration && journeyActive) {
-        console.log('[v0] Journey mode deactivated');
+    if (!isPlaying || !journeyEnabled) {
+      if (journeyActive) {
         setJourneyActive(false);
         setJourneyProgress(0);
       }
-    });
-  }, [currentTime, isPlaying, journeyActive]);
+      return;
+    }
+    
+    const journey = JOURNEY_TIMESTAMPS[0];
+    if (!journey) return;
+    
+    const timeInJourney = currentTime - journey.time;
+    
+    if (timeInJourney >= 0 && timeInJourney < journey.duration) {
+      if (!journeyActive) {
+        setJourneyActive(true);
+      }
+      // Linear progress 0-1, fade logic handled inside JourneyMode
+      const progress = timeInJourney / journey.duration;
+      setJourneyProgress(progress);
+    } else if (timeInJourney >= journey.duration && journeyActive) {
+      setJourneyActive(false);
+      setJourneyProgress(0);
+    }
+  }, [currentTime, isPlaying, journeyEnabled, journeyActive]);
 
   return (
     <Canvas
       camera={{ position: [0, 0, 35], fov: 60 }}
       gl={{ antialias: true }}
       style={{ width: '100%', height: '100%' }}
+      onCreated={({ camera }) => {
+        cameraRef.current = camera;
+      }}
     >
       {/* Smooth camera controls with momentum */}
       <OrbitControls 
+        ref={controlsRef}
         enableDamping={true}
         dampingFactor={0.05}
         rotateSpeed={mouseSensitivity}
@@ -81,7 +107,9 @@ export default function VisualizerScene({
       <JourneyMode 
         isActive={journeyActive}
         journeyProgress={journeyProgress}
-        visualizerRef={visualizerGroupRef}
+        hue={beatData.hue ?? 0.78}
+        saturation={beatData.saturation ?? 1.0}
+        lightness={beatData.lightness ?? 0.6}
       />
 
       {/* Visualizer group (can move during journey) */}
@@ -90,7 +118,10 @@ export default function VisualizerScene({
         <AuroraRing 
           beatHit={beatData.beatHit} 
           bassStrength={beatData.bassStrength || 0}
-          expansion={beatData.expansion} 
+          expansion={beatData.expansion}
+          hue={beatData.hue ?? 0.78}
+          saturation={beatData.saturation ?? 1.0}
+          lightness={beatData.lightness ?? 0.6}
         />
 
         {/* Particle Visualizer */}
