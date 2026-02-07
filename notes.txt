@@ -1,0 +1,2 @@
+TO RUN BACKEND:
+uvicorn main:app --reload

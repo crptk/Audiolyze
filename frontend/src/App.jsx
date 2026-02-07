@@ -1,27 +1,112 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { fetchAIParams } from "./api/audiolyze";
 import VisualizerScene from './components/VisualizerScene';
+import TimelineControls from './components/TimelineControls';
 import './App.css';
 import './styles/visualizer.css';
 
 function App() {
-  console.log('[v0] App component rendering');
   const [audioLoaded, setAudioLoaded] = useState(false);
   const [audioFile, setAudioFile] = useState(null);
   const [aiParams, setAiParams] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // Audio playback state
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [analyser, setAnalyser] = useState(null);
+  
+  const audioRef = useRef(null);
+  const audioContextRef = useRef(null);
 
-  const handleFileSelect = (file) => {
+  const handleFileSelect = async (file) => {
     if (file && (file.type === 'audio/mpeg' || file.type === 'video/mp4' || file.name.endsWith('.m4v'))) {
       console.log('[v0] Audio file loaded:', file.name);
       setAudioFile(file);
       setAudioLoaded(true);
+
+      // Setup audio element
+      const audioUrl = URL.createObjectURL(file);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.addEventListener('loadedmetadata', () => {
+        setDuration(audio.duration);
+      });
+
+      audio.addEventListener('timeupdate', () => {
+        setCurrentTime(audio.currentTime);
+      });
+
+      audio.addEventListener('ended', () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+      });
+
+      // Setup Web Audio API for visualization
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const analyserNode = audioContext.createAnalyser();
+      analyserNode.fftSize = 2048;
       
-      // TODO: Send audio file to backend for AI analysis
-      // fetchAIParams(file).then(params => setAiParams(params));
+      const source = audioContext.createMediaElementSource(audio);
+      source.connect(analyserNode);
+      analyserNode.connect(audioContext.destination);
+      
+      audioContextRef.current = audioContext;
+      setAnalyser(analyserNode);
+      
+      console.log('[v0] Analyser created and set:', analyserNode);
+
+      try {
+        const params = await fetchAIParams(file);
+        console.log('[v0] AI Params received:', params);
+        setAiParams(params);
+      } catch (err) {
+        console.error('AI processing failed:', err);
+      }
     }
   };
+
+  // Audio control handlers
+  const handlePlayPause = () => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleSeek = (time) => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = time;
+    setCurrentTime(time);
+  };
+
+  const handleSpeedChange = (speed) => {
+    if (!audioRef.current) return;
+    audioRef.current.playbackRate = speed;
+    setPlaybackSpeed(speed);
+  };
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
 
   const handleFileInput = (e) => {
     const file = e.target.files?.[0];
@@ -52,7 +137,9 @@ function App() {
         <VisualizerScene 
           audioFile={audioFile}
           aiParams={aiParams}
-          isPlaying={audioLoaded}
+          isPlaying={isPlaying}
+          analyser={analyser}
+          currentTime={currentTime}
         />
       </div>
 
@@ -108,6 +195,19 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Timeline Controls (fades in when AI params are ready) */}
+      <TimelineControls
+        audioFile={audioFile}
+        aiParams={aiParams}
+        currentTime={currentTime}
+        duration={duration}
+        isPlaying={isPlaying}
+        playbackSpeed={playbackSpeed}
+        onPlayPause={handlePlayPause}
+        onSeek={handleSeek}
+        onSpeedChange={handleSpeedChange}
+      />
     </div>
   );
 }
