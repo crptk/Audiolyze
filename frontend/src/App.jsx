@@ -177,13 +177,33 @@ function App() {
     }
   };
 
-  // When a shape changes (from backend timestamps or manual), also switch environment
-  const handleShapeChanged = () => {
-    setCurrentEnvironment(prev => {
-      const next = pickRandomEnvironment(prev);
-      console.log('[v0] Shape changed - switching environment:', prev, '->', next);
-      return next;
-    });
+  // When a shape changes from backend timestamps, also switch environment
+  // manualShapeChangeRef tracks if the last change was manual to prevent auto-switching
+  const manualShapeChangeRef = useRef(false);
+  
+  const handleShapeChanged = (newShape) => {
+    console.log('[v0] handleShapeChanged called with shape:', newShape, 'manual?', manualShapeChangeRef.current);
+    
+    // Update currentShape to reflect actual shape
+    setCurrentShape(newShape);
+    
+    // Only auto-switch environment if it wasn't a manual change
+    if (!manualShapeChangeRef.current) {
+      setCurrentEnvironment(prev => {
+        const next = pickRandomEnvironment(prev);
+        console.log('[v0] Auto-switching environment:', prev, '->', next);
+        return next;
+      });
+    }
+    
+    // Reset the flag after handling
+    manualShapeChangeRef.current = false;
+  };
+  
+  const handleManualShapeChange = (shape) => {
+    console.log('[v0] Manual shape change requested:', shape);
+    manualShapeChangeRef.current = true;
+    setCurrentShape(shape);
   };
 
   const handleBackToMenu = () => {
@@ -359,7 +379,7 @@ function App() {
         onPlayPause={handlePlayPause}
         onSeek={handleSeek}
         onSpeedChange={handleSpeedChange}
-        onShapeChange={setCurrentShape}
+        onShapeChange={handleManualShapeChange}
         currentEnvironment={currentEnvironment}
         onEnvironmentChange={setCurrentEnvironment}
         onReset={handleReset}

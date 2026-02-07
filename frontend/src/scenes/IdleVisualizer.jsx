@@ -160,10 +160,10 @@ export default function IdleVisualizer({
       targetPositions.set(newPositions);
       targetShapeRef.current = manualShape;
       morphProgressRef.current = 0;
-      console.log('[v0] IdleVisualizer: manual shape change ->', manualShape, '- calling onShapeChange');
-      if (onShapeChange) onShapeChange(manualShape);
+      console.log('[v0] IdleVisualizer: manual shape change ->', manualShape);
+      // Don't call onShapeChange for manual changes - it's already set in App.jsx
     }
-  }, [manualShape, pointCount, targetPositions, onShapeChange]);
+  }, [manualShape, pointCount, targetPositions]);
 
   // Check for shape transitions based on timestamp (range-based for reliability)
   useEffect(() => {

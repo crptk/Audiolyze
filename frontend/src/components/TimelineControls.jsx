@@ -27,7 +27,11 @@ export default function TimelineControls({
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [showManualControls, setShowManualControls] = useState(false);
+  const [showShapeDropdown, setShowShapeDropdown] = useState(false);
+  const [showEnvironmentDropdown, setShowEnvironmentDropdown] = useState(false);
   const timelineRef = useRef(null);
+  const shapeDropdownRef = useRef(null);
+  const environmentDropdownRef = useRef(null);
 
   const shapes = [
     { id: 'jellyfish', label: 'Jellyfish', icon: '🪼' },
@@ -36,6 +40,14 @@ export default function TimelineControls({
     { id: 'spiral', label: 'Spiral', icon: '🌀' },
     { id: 'cube', label: 'Cube', icon: '🧊' },
     { id: 'wave', label: 'Wave', icon: '🌊' }
+  ];
+
+  const environments = [
+    { id: 'warp', label: 'Warp' },
+    { id: 'orbit', label: 'Orbit' },
+    { id: 'aurora', label: 'Aurora' },
+    { id: 'fireflies', label: 'Fireflies' },
+    { id: 'rain', label: 'Rain' },
   ];
 
   const formatTime = (seconds) => {
@@ -80,6 +92,38 @@ export default function TimelineControls({
     }
   }, [isDragging]);
 
+  // Close shape dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (shapeDropdownRef.current && !shapeDropdownRef.current.contains(event.target)) {
+        setShowShapeDropdown(false);
+      }
+    };
+
+    if (showShapeDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showShapeDropdown]);
+
+  // Close environment dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (environmentDropdownRef.current && !environmentDropdownRef.current.contains(event.target)) {
+        setShowEnvironmentDropdown(false);
+      }
+    };
+
+    if (showEnvironmentDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showEnvironmentDropdown]);
+
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   // Dynamic timestamps from backend structural analysis
@@ -104,21 +148,45 @@ export default function TimelineControls({
         {showManualControls && (
           <div className="manual-controls-dropdown">
             <div className="dropdown-header">Shape Selection</div>
-            <div className="shape-grid">
-              {shapes.map(shape => (
-                <button
-                  key={shape.id}
-                  className={`shape-button ${currentShape === shape.id ? 'active' : ''}`}
-                  onClick={() => {
-                    onShapeChange(shape.id);
-                    setShowManualControls(false);
-                  }}
-                  title={shape.label}
-                >
-                  <span className="shape-icon">{shape.icon}</span>
-                  <span className="shape-label">{shape.label}</span>
-                </button>
-              ))}
+            <div className="custom-dropdown" ref={shapeDropdownRef}>
+              <button
+                className="dropdown-trigger"
+                onClick={() => setShowShapeDropdown(!showShapeDropdown)}
+              >
+                <div className="dropdown-value">
+                  {currentShape ? (
+                    <>
+                      <span className="shape-icon">{shapes.find(s => s.id === currentShape)?.icon}</span>
+                      <span className="shape-label">{shapes.find(s => s.id === currentShape)?.label}</span>
+                    </>
+                  ) : (
+                    <span className="shape-label">Select a shape</span>
+                  )}
+                </div>
+                <svg className="dropdown-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="2 4 6 8 10 4" />
+                </svg>
+              </button>
+
+              {showShapeDropdown && (
+                <div className="dropdown-menu">
+                  {shapes.map(shape => (
+                    <button
+                      key={shape.id}
+                      className={`dropdown-item ${currentShape === shape.id ? 'active' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log('[v0] Shape selected:', shape.id);
+                        onShapeChange(shape.id);
+                        setShowShapeDropdown(false);
+                      }}
+                    >
+                      <span className="shape-icon">{shape.icon}</span>
+                      <span className="shape-label">{shape.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="dropdown-header" style={{ marginTop: '16px' }}>Audio EQ</div>
@@ -212,38 +280,55 @@ export default function TimelineControls({
             </div>
 
             <div className="dropdown-header" style={{ marginTop: '16px' }}>Environment</div>
-            <div className="shape-grid">
-              {[
-                { id: 'warp', label: 'Warp' },
-                { id: 'orbit', label: 'Orbit' },
-                { id: 'aurora', label: 'Aurora' },
-                { id: 'fireflies', label: 'Fireflies' },
-                { id: 'rain', label: 'Rain' },
-              ].map(env => (
-                <button
-                  key={env.id}
-                  className={`shape-button ${currentEnvironment === env.id ? 'active' : ''}`}
-                  onClick={() => {
-                    console.log('[v0] TimelineControls: manual environment change ->', env.id);
-                    onEnvironmentChange(env.id);
-                    setShowManualControls(false);
-                  }}
-                  title={env.label}
-                >
-                  <span className="shape-label">{env.label}</span>
-                </button>
-              ))}
+            <div className="custom-dropdown" ref={environmentDropdownRef}>
+              <button
+                className="dropdown-trigger"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowEnvironmentDropdown(!showEnvironmentDropdown);
+                }}
+              >
+                <div className="dropdown-value">
+                  {currentEnvironment ? (
+                    <span className="shape-label">{environments.find(e => e.id === currentEnvironment)?.label || 'Select environment'}</span>
+                  ) : (
+                    <span className="shape-label">Select environment</span>
+                  )}
+                </div>
+                <svg className="dropdown-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="2 4 6 8 10 4" />
+                </svg>
+              </button>
+
+              {showEnvironmentDropdown && (
+                <div className="dropdown-menu">
+                  {environments.map(env => (
+                    <button
+                      key={env.id}
+                      className={`dropdown-item ${currentEnvironment === env.id ? 'active' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log('[v0] Environment selected:', env.id);
+                        onEnvironmentChange(env.id);
+                        setShowEnvironmentDropdown(false);
+                      }}
+                    >
+                      <span className="shape-label">{env.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', padding: '4px 0' }}>
+            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', padding: '4px 0', marginTop: '8px' }}>
               Auto-switches with shape changes
             </div>
 
             <div className="dropdown-header" style={{ marginTop: '16px' }}>Controls</div>
             <button
               className="reset-button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 onReset();
-                setShowManualControls(false);
               }}
               title="Reset visualizer to initial state"
             >
