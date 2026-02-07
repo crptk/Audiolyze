@@ -139,6 +139,13 @@
   gap: 24px;
 }
 
+/* Playback Controls Container */
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* Control Buttons */
 .control-button {
   background: rgba(255, 255, 255, 0.1);
@@ -154,14 +161,32 @@
   transition: all 0.2s ease;
 }
 
-.control-button:hover {
+.control-button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.4);
   transform: scale(1.05);
 }
 
-.control-button:active {
+.control-button:active:not(:disabled) {
   transform: scale(0.95);
+}
+
+.control-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Smaller buttons for prev/next */
+.control-button.prev-button,
+.control-button.next-button {
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.control-button.prev-button:hover:not(:disabled),
+.control-button.next-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 /* Speed Controls */

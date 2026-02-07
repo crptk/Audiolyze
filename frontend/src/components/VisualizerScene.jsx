@@ -52,11 +52,14 @@ export default function VisualizerScene({
       <ambientLight intensity={0.3} />
 
       <OrbitControls
-        enableZoom={false}
+        enableZoom={true}
         enablePan={false}
         autoRotate={false}
         maxPolarAngle={Math.PI}
         minPolarAngle={0}
+        zoomSpeed={0.5}
+        minDistance={10}
+        maxDistance={100}
       />
 
       <StarField

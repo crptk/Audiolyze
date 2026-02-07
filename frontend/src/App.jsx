@@ -16,19 +16,19 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
-  
+
   // SoundCloud state
   const [soundcloudUrl, setSoundcloudUrl] = useState('');
   const [soundcloudError, setSoundcloudError] = useState('');
-  
+
   // Now playing info
   const [nowPlaying, setNowPlaying] = useState(null); // { title, source: 'file' | 'soundcloud' }
-  
+
   // Playlist queue
   const [playlistQueue, setPlaylistQueue] = useState([]); // Array of { url, title }
   const [playlistIndex, setPlaylistIndex] = useState(-1);
   const isPlayingFromQueueRef = useRef(false);
-  
+
   // Audio playback state
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -37,7 +37,7 @@ function App() {
   const [analyser, setAnalyser] = useState(null);
   const [currentShape, setCurrentShape] = useState(null);
   const [currentEnvironment, setCurrentEnvironment] = useState(ENVIRONMENTS.FIREFLIES);
-  
+
 
   const [audioTuning, setAudioTuning] = useState({
     bass: 1.0,
@@ -52,7 +52,7 @@ function App() {
     sensitivity: 1.0,
   });
   const [tuningLinked, setTuningLinked] = useState(true);
-  
+
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
   const resetVisualizerRef = useRef(null);
@@ -87,7 +87,7 @@ function App() {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const analyserNode = audioContext.createAnalyser();
       analyserNode.fftSize = 2048;
-      
+
       // Create EQ filter nodes
       const bassFilter = audioContext.createBiquadFilter();
       bassFilter.type = 'lowshelf';
@@ -116,7 +116,7 @@ function App() {
       trebleFilter.connect(gainNode);
       gainNode.connect(analyserNode);
       analyserNode.connect(audioContext.destination);
-      
+
       audioContextRef.current = audioContext;
       audioFiltersRef.current = { bassFilter, midFilter, trebleFilter, gainNode };
       setAnalyser(analyserNode);
@@ -127,7 +127,7 @@ function App() {
         const params = await fetchAIParams(file);
         setLoadingMessage('Generating timeline...');
         setAiParams(params);
-        
+
         // Brief pause so user sees the final message
         await new Promise(resolve => setTimeout(resolve, 600));
         setLoadingMessage('Launching visualizer...');
@@ -188,7 +188,7 @@ function App() {
 
   const handleReset = () => {
     if (!audioRef.current) return;
-    
+
     // Reset audio playback
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
@@ -196,10 +196,10 @@ function App() {
     setCurrentTime(0);
     setPlaybackSpeed(1);
     audioRef.current.playbackRate = 1;
-    
+
     // Reset visualizer state
     setCurrentShape(null);
-    
+
     // Reset camera and visualizer position
     if (resetVisualizerRef.current) {
       resetVisualizerRef.current();
@@ -209,11 +209,11 @@ function App() {
   // When a shape changes from backend timestamps, also switch environment
   // manualShapeChangeRef tracks if the last change was manual to prevent auto-switching
   const manualShapeChangeRef = useRef(false);
-  
+
   const handleShapeChanged = (newShape) => {
     // Update currentShape to reflect actual shape
     if (newShape) setCurrentShape(newShape);
-    
+
     // Only auto-switch environment if it wasn't a manual change
     if (!manualShapeChangeRef.current) {
       setCurrentEnvironment(prev => {
@@ -221,11 +221,11 @@ function App() {
         return next;
       });
     }
-    
+
     // Reset the flag after handling
     manualShapeChangeRef.current = false;
   };
-  
+
   const handleManualShapeChange = (shape) => {
     manualShapeChangeRef.current = true;
     setCurrentShape(shape);
@@ -235,12 +235,12 @@ function App() {
   const loadSoundCloudTrack = useCallback(async (blobUrl, title) => {
     setIsLoading(true);
     setLoadingMessage('Preparing audio...');
-    
+
     // Fetch the blob from the URL to create a File object for AI analysis
     const response = await fetch(blobUrl);
     const blob = await response.blob();
     const file = new File([blob], `${title}.mp3`, { type: 'audio/mpeg' });
-    
+
     // Setup audio element
     const audio = new Audio();
     audio.crossOrigin = "anonymous";
@@ -269,7 +269,7 @@ function App() {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const analyserNode = audioContext.createAnalyser();
     analyserNode.fftSize = 2048;
-    
+
     const bassFilter = audioContext.createBiquadFilter();
     bassFilter.type = 'lowshelf';
     bassFilter.frequency.value = 200;
@@ -296,7 +296,7 @@ function App() {
     trebleFilter.connect(gainNode);
     gainNode.connect(analyserNode);
     analyserNode.connect(audioContext.destination);
-    
+
     audioContextRef.current = audioContext;
     audioFiltersRef.current = { bassFilter, midFilter, trebleFilter, gainNode };
     setAnalyser(analyserNode);
@@ -334,7 +334,7 @@ function App() {
       }
 
       const nextTrack = playlistQueue[nextIdx];
-      
+
       // Clean up current audio
       if (audioRef.current) {
         audioRef.current.pause();
@@ -356,7 +356,7 @@ function App() {
       (async () => {
         setIsLoading(true);
         setLoadingMessage(`Downloading: ${nextTrack.title}...`);
-        
+
         try {
           const downloadData = await fetchSoundCloudDownload(nextTrack.url);
           if (!downloadData.ok) {
@@ -366,7 +366,7 @@ function App() {
             playNextInQueue();
             return;
           }
-          
+
           const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
           await loadSoundCloudTrack(blobUrl, nextTrack.title);
         } catch (err) {
@@ -381,25 +381,76 @@ function App() {
     });
   }, [playlistQueue, loadSoundCloudTrack]);
 
+  // Play previous track in playlist queue
+  const playPreviousInQueue = useCallback(async () => {
+    setPlaylistIndex(prev => {
+      const prevIdx = prev - 1;
+      if (prevIdx < 0) {
+        // At beginning of playlist
+        return prev;
+      }
+
+      const prevTrack = playlistQueue[prevIdx];
+
+      // Clean up current audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      audioFiltersRef.current = null;
+      setAnalyser(null);
+      setAiParams(null);
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setCurrentShape(null);
+
+      // Download and load previous track
+      (async () => {
+        setIsLoading(true);
+        setLoadingMessage(`Downloading: ${prevTrack.title}...`);
+
+        try {
+          const downloadData = await fetchSoundCloudDownload(prevTrack.url);
+          if (!downloadData.ok) {
+            console.error('Failed to download track:', prevTrack.title);
+            return;
+          }
+
+          const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
+          await loadSoundCloudTrack(blobUrl, prevTrack.title);
+        } catch (err) {
+          console.error('Failed to download track:', prevTrack.title, err);
+        }
+      })();
+
+      return prevIdx;
+    });
+  }, [playlistQueue, loadSoundCloudTrack]);
+
   // Handle SoundCloud URL submission
   const handleSoundCloudSubmit = async () => {
     if (!soundcloudUrl.trim()) return;
-    
+
     setSoundcloudError('');
     setIsLoading(true);
     setLoadingMessage('Fetching SoundCloud info...');
-    
+
     try {
       // Step 1: Get info about the URL (track or playlist)
       const info = await fetchSoundCloudInfo(soundcloudUrl.trim());
-      
+
       if (!info.ok) {
         setSoundcloudError(info.error || 'Failed to fetch SoundCloud info');
         setIsLoading(false);
         setLoadingMessage('');
         return;
       }
-      
+
       if (info.type === 'playlist') {
         // Set up playlist queue, download first track immediately
         const tracks = info.tracks || [];
@@ -409,14 +460,14 @@ function App() {
           setLoadingMessage('');
           return;
         }
-        
+
         setPlaylistQueue(tracks);
         setPlaylistIndex(0);
         isPlayingFromQueueRef.current = true;
-        
+
         const firstTrack = tracks[0];
         setLoadingMessage(`Downloading: ${firstTrack.title}...`);
-        
+
         const downloadData = await fetchSoundCloudDownload(firstTrack.url);
         if (!downloadData.ok) {
           setSoundcloudError('Failed to download first track');
@@ -424,13 +475,13 @@ function App() {
           setLoadingMessage('');
           return;
         }
-        
+
         const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
         await loadSoundCloudTrack(blobUrl, firstTrack.title);
       } else {
         // Single track
         setLoadingMessage(`Downloading: ${info.title}...`);
-        
+
         const downloadData = await fetchSoundCloudDownload(soundcloudUrl.trim());
         if (!downloadData.ok) {
           setSoundcloudError(downloadData.error || 'Download failed');
@@ -438,7 +489,7 @@ function App() {
           setLoadingMessage('');
           return;
         }
-        
+
         const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
         await loadSoundCloudTrack(blobUrl, info.title);
       }
@@ -461,7 +512,7 @@ function App() {
       audioContextRef.current = null;
     }
     audioFiltersRef.current = null;
-    
+
     // Reset all state - analyser set to null FIRST so IdleVisualizer cleans up
     setAnalyser(null);
     setAudioFile(null);
@@ -487,7 +538,7 @@ function App() {
   useEffect(() => {
     if (!audioFiltersRef.current) return;
     const { bassFilter, midFilter, trebleFilter, gainNode } = audioFiltersRef.current;
-    
+
     // Convert 0-3 multiplier to dB gain: 1.0 = 0dB, 0 = -24dB, 3 = +12dB
     bassFilter.gain.value = (audioPlaybackTuning.bass - 1.0) * 12;
     midFilter.gain.value = (audioPlaybackTuning.mid - 1.0) * 12;
@@ -537,7 +588,7 @@ function App() {
 
       {/* Three.js Visualizer Background (blurred initially) */}
       <div className={`visualizer-background ${audioLoaded ? 'unblurred' : ''}`}>
-        <VisualizerScene 
+        <VisualizerScene
           audioFile={audioFile}
           aiParams={aiParams}
           isPlaying={isPlaying}
@@ -586,7 +637,7 @@ function App() {
                 <br />
                 to get started.
               </p>
-              
+
               <svg
                 className="upload-icon"
                 width="48"
@@ -624,7 +675,7 @@ function App() {
             </div>
             <div className="soundcloud-input-wrapper">
               <svg className="soundcloud-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z"/>
+                <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z" />
               </svg>
               <input
                 type="text"
@@ -676,6 +727,8 @@ function App() {
         nowPlaying={nowPlaying}
         playlistQueue={playlistQueue}
         playlistIndex={playlistIndex}
+        onNext={playNextInQueue}
+        onPrevious={playPreviousInQueue}
         audioTuning={audioTuning}
         onAudioTuningChange={(val) => {
           setAudioTuning(val);

@@ -21,6 +21,8 @@ export default function TimelineControls({
   nowPlaying = null,
   playlistQueue = [],
   playlistIndex = -1,
+  onNext,
+  onPrevious,
   audioTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
   onAudioTuningChange,
   audioPlaybackTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
@@ -384,23 +386,56 @@ export default function TimelineControls({
       </div>
 
       <div className="controls-container">
-        {/* Play/Pause Button */}
-        <button
-          className="control-button play-pause"
-          onClick={onPlayPause}
-          title={isPlaying ? 'Pause' : 'Play'}
-        >
-          {isPlaying ? (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="6" y="4" width="4" height="16" fill="currentColor" />
-              <rect x="14" y="4" width="4" height="16" fill="currentColor" />
-            </svg>
-          ) : (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" />
-            </svg>
+        {/* Playback Controls */}
+        <div className="playback-controls">
+          {/* Previous Button (only show for playlists) */}
+          {playlistQueue.length > 1 && (
+            <button
+              className="control-button prev-button"
+              onClick={onPrevious}
+              disabled={playlistIndex <= 0}
+              title="Previous track"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="19 20 9 12 19 4 19 20" fill="currentColor" />
+                <line x1="5" y1="4" x2="5" y2="20" stroke="currentColor" strokeWidth="2" />
+              </svg>
+            </button>
           )}
-        </button>
+
+          {/* Play/Pause Button */}
+          <button
+            className="control-button play-pause"
+            onClick={onPlayPause}
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="6" y="4" width="4" height="16" fill="currentColor" />
+                <rect x="14" y="4" width="4" height="16" fill="currentColor" />
+              </svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" />
+              </svg>
+            )}
+          </button>
+
+          {/* Next Button (only show for playlists) */}
+          {playlistQueue.length > 1 && (
+            <button
+              className="control-button next-button"
+              onClick={onNext}
+              disabled={playlistIndex >= playlistQueue.length - 1}
+              title="Next track"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" />
+                <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" strokeWidth="2" />
+              </svg>
+            </button>
+          )}
+        </div>
 
         {/* Speed Control */}
         <div className="speed-controls">
