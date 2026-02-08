@@ -131,7 +131,8 @@ export default function IdleVisualizer({
 
   // Generate initial geometry with shape morphing support
   const { positions, originalPositions, targetPositions, pointCount } = useMemo(() => {
-    const POINT_COUNT = 14000;
+    // Reduced from 14000 to 10000 to prevent WebGL context loss
+    const POINT_COUNT = 10000;
     const positions = new Float32Array(POINT_COUNT * 3);
     const originalPositions = SHAPE_GENERATORS[SHAPES.JELLYFISH](POINT_COUNT);
     const targetPositions = new Float32Array(POINT_COUNT * 3);
@@ -160,7 +161,6 @@ export default function IdleVisualizer({
       targetPositions.set(newPositions);
       targetShapeRef.current = manualShape;
       morphProgressRef.current = 0;
-      console.log('[v0] IdleVisualizer: manual shape change ->', manualShape);
       // Don't call onShapeChange for manual changes - it's already set in App.jsx
     }
   }, [manualShape, pointCount, targetPositions]);
@@ -180,7 +180,6 @@ export default function IdleVisualizer({
         targetPositions.set(newPositions);
         targetShapeRef.current = newShape;
         morphProgressRef.current = 0;
-        console.log('[v0] IdleVisualizer: timestamp shape change at', currentTime.toFixed(2), 's ->', newShape, '- calling onShapeChange');
         if (onShapeChange) onShapeChange(newShape);
         break;
       }
@@ -195,6 +194,22 @@ export default function IdleVisualizer({
     // This will be filled when audio is loaded
     // Audio data connected
   }, [audioData, isPlaying]);
+
+  // Proper cleanup of Three.js resources on unmount
+  useEffect(() => {
+    return () => {
+      if (pointsRef.current) {
+        // Dispose geometry
+        if (pointsRef.current.geometry) {
+          pointsRef.current.geometry.dispose();
+        }
+        // Dispose material
+        if (pointsRef.current.material) {
+          pointsRef.current.material.dispose();
+        }
+      }
+    };
+  }, []);
 
   useFrame((state, delta) => {
     if (!pointsRef.current) return;

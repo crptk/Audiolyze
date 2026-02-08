@@ -41,9 +41,7 @@ export default function EnvironmentManager({
 
   // When currentEnv changes, start a crossfade
   useEffect(() => {
-    console.log('[v0] EnvironmentManager: currentEnv prop =', currentEnv, 'displayEnv =', displayEnv);
     if (currentEnv !== displayEnv && !isTransitioning.current) {
-      console.log('[v0] EnvironmentManager: starting crossfade from', displayEnv, 'to', currentEnv);
       setPrevEnv(displayEnv);
       setDisplayEnv(currentEnv);
       transitionRef.current = 0;

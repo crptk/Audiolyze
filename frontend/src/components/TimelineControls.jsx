@@ -23,6 +23,9 @@ export default function TimelineControls({
   playlistIndex = -1,
   onNext,
   onPrevious,
+  onPlaylistTrackSelect,
+  anaglyphEnabled = false,
+  onAnaglyphToggle,
   audioTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
   onAudioTuningChange,
   audioPlaybackTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
@@ -34,9 +37,11 @@ export default function TimelineControls({
   const [showManualControls, setShowManualControls] = useState(false);
   const [showShapeDropdown, setShowShapeDropdown] = useState(false);
   const [showEnvironmentDropdown, setShowEnvironmentDropdown] = useState(false);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const timelineRef = useRef(null);
   const shapeDropdownRef = useRef(null);
   const environmentDropdownRef = useRef(null);
+  const playlistModalRef = useRef(null);
 
   const shapes = [
     { id: 'jellyfish', label: 'Jellyfish', icon: '🪼' },
@@ -128,6 +133,22 @@ export default function TimelineControls({
       };
     }
   }, [showEnvironmentDropdown]);
+
+  // Close playlist modal when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (playlistModalRef.current && !playlistModalRef.current.contains(event.target)) {
+        setShowPlaylistModal(false);
+      }
+    };
+
+    if (showPlaylistModal) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showPlaylistModal]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -328,6 +349,21 @@ export default function TimelineControls({
 
             <div className="dropdown-header" style={{ marginTop: '16px' }}>Controls</div>
             <button
+              className={`effect-toggle-button ${anaglyphEnabled ? 'active' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onAnaglyphToggle) onAnaglyphToggle(!anaglyphEnabled);
+              }}
+              title={anaglyphEnabled ? 'Disable 3D Anaglyph' : 'Enable 3D Anaglyph (Red-Blue)'}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <circle cx="9" cy="10" r="3" style={{ stroke: anaglyphEnabled ? '#ff0000' : 'currentColor' }} />
+                <circle cx="15" cy="10" r="3" style={{ stroke: anaglyphEnabled ? '#00ffff' : 'currentColor' }} />
+              </svg>
+              <span>3D Anaglyph {anaglyphEnabled ? 'ON' : 'OFF'}</span>
+            </button>
+            <button
               className="reset-button"
               onClick={(e) => {
                 e.stopPropagation();
@@ -471,29 +507,81 @@ export default function TimelineControls({
 
         {/* Now Playing (right-aligned) */}
         {nowPlaying && (
-          <div className="now-playing">
-            <div className="now-playing-icon">
-              {nowPlaying.source === 'soundcloud' ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z"/>
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 18V5l12-2v13" />
-                  <circle cx="6" cy="18" r="3" />
-                  <circle cx="18" cy="16" r="3" />
-                </svg>
-              )}
+          <div className="now-playing-container">
+            <div 
+              className={`now-playing ${playlistQueue.length > 1 ? 'clickable' : ''}`}
+              onClick={() => playlistQueue.length > 1 && setShowPlaylistModal(true)}
+              title={playlistQueue.length > 1 ? 'View playlist' : ''}
+            >
+              <div className="now-playing-icon">
+                {nowPlaying.source === 'soundcloud' ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z"/>
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" />
+                    <circle cx="18" cy="16" r="3" />
+                  </svg>
+                )}
+              </div>
+              <div className="now-playing-info">
+                <span className="now-playing-label">Now Playing</span>
+                <span className="now-playing-title">{nowPlaying.title}</span>
+                {playlistQueue.length > 1 && (
+                  <span className="now-playing-queue">
+                    {playlistIndex + 1} / {playlistQueue.length}
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="now-playing-info">
-              <span className="now-playing-label">Now Playing</span>
-              <span className="now-playing-title">{nowPlaying.title}</span>
-              {playlistQueue.length > 1 && (
-                <span className="now-playing-queue">
-                  {playlistIndex + 1} / {playlistQueue.length}
-                </span>
-              )}
-            </div>
+
+            {/* Playlist Modal */}
+            {showPlaylistModal && playlistQueue.length > 1 && (
+              <div className="playlist-modal" ref={playlistModalRef}>
+                <div className="playlist-modal-header">
+                  <h3>Playlist</h3>
+                  <button 
+                    className="playlist-modal-close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPlaylistModal(false);
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="playlist-modal-tracks">
+                  {playlistQueue.map((track, index) => (
+                    <div
+                      key={index}
+                      className={`playlist-track ${index === playlistIndex ? 'active' : ''}`}
+                      onClick={() => {
+                        if (onPlaylistTrackSelect) {
+                          onPlaylistTrackSelect(index);
+                        }
+                        setShowPlaylistModal(false);
+                      }}
+                    >
+                      <div className="playlist-track-number">
+                        {index === playlistIndex ? (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                          </svg>
+                        ) : (
+                          <span>{index + 1}</span>
+                        )}
+                      </div>
+                      <div className="playlist-track-title">{track.title}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
