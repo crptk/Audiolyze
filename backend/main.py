@@ -16,11 +16,17 @@ app = FastAPI(title="Audiolyze.ai API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,  # MUST be False with "*"
+    allow_origins=[
+        "https://www.audiolyze.xyz",
+        "https://audiolyze.xyz",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 app.include_router(analyze_router)
 app.include_router(params_router)
