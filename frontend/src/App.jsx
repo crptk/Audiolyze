@@ -7,6 +7,7 @@ import StageSidebar from './components/StageSidebar';
 import RoomHeader from './components/RoomHeader';
 import RoomChat from './components/RoomChat';
 import HostMiniplayer from './components/HostMiniplayer';
+import QueuePanel from './components/QueuePanel';
 import { useRoom } from './context/RoomContext';
 import { ENVIRONMENTS, pickRandomEnvironment } from './components/EnvironmentManager';
 import './App.css';
@@ -66,7 +67,8 @@ function App() {
     broadcastHostAction, onHostAction, setAudioSource, sendSyncState, uploadAudioFile,
     audienceAudioSource, audienceAiParams, audienceSync,
     initialVisualizerState, hostedRoom, isVisiting, isOnMenu, goToMenu, returnToHostedRoom, endHostedRoom,
-    hostReturnData, clearHostReturnData, userId } = useRoom();
+    hostReturnData, clearHostReturnData, userId,
+    queueAdvance, onQueuePlayNext } = useRoom();
   
   const isAudience = !!currentRoom && !isHost;
   
@@ -93,6 +95,8 @@ function App() {
       audio.addEventListener('ended', () => {
         setIsPlaying(false);
         setCurrentTime(0);
+        // Host: advance the queue when a song finishes
+        if (isHost) queueAdvance();
       });
 
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -542,7 +546,6 @@ function App() {
 
     const unsubscribe = onHostAction((msg) => {
       const { action, payload } = msg;
-      console.log('[v0] Audience received host_action:', action, payload);
       switch (action) {
         case 'play_pause':
           if (audioRef.current && payload.isPlaying !== undefined) {
@@ -800,6 +803,89 @@ function App() {
     }
   }, [isAudience, audienceSync]);
 
+  // HOST: Listen for queue_play_next events from the server
+  useEffect(() => {
+    if (!isHost || !onQueuePlayNext) return;
+    const unsubscribe = onQueuePlayNext(async (item) => {
+      if (!item) return;
+      // Load the next queue item
+      const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+      
+      // Clean up current audio
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      if (audioContextRef.current) { try { audioContextRef.current.close(); } catch {} audioContextRef.current = null; }
+      audioFiltersRef.current = null;
+      setAnalyser(null);
+      setAiParams(null);
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setCurrentShape(null);
+
+      if (item.source === 'soundcloud' && item.url) {
+        let blobUrl = item.url;
+        if (blobUrl.startsWith('/')) blobUrl = apiBase + blobUrl;
+        await loadSoundCloudTrack(blobUrl, item.title);
+      } else if (item.url) {
+        // Uploaded file URL
+        let fileUrl = item.url;
+        if (fileUrl.startsWith('/')) fileUrl = apiBase + fileUrl;
+        
+        const audio = new Audio();
+        audio.crossOrigin = "anonymous";
+        audio.src = fileUrl;
+        audioRef.current = audio;
+
+        audio.addEventListener('loadedmetadata', () => { setDuration(audio.duration); });
+        audio.addEventListener('timeupdate', () => { setCurrentTime(audio.currentTime); });
+        audio.addEventListener('ended', () => {
+          setIsPlaying(false);
+          setCurrentTime(0);
+          queueAdvance();
+        });
+
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const analyserNode = audioContext.createAnalyser();
+        analyserNode.fftSize = 2048;
+
+        const bassFilter = audioContext.createBiquadFilter();
+        bassFilter.type = 'lowshelf'; bassFilter.frequency.value = 200; bassFilter.gain.value = 0;
+        const midFilter = audioContext.createBiquadFilter();
+        midFilter.type = 'peaking'; midFilter.frequency.value = 1500; midFilter.Q.value = 1.0; midFilter.gain.value = 0;
+        const trebleFilter = audioContext.createBiquadFilter();
+        trebleFilter.type = 'highshelf'; trebleFilter.frequency.value = 4000; trebleFilter.gain.value = 0;
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = 1.0;
+
+        const source = audioContext.createMediaElementSource(audio);
+        source.connect(bassFilter);
+        bassFilter.connect(midFilter);
+        midFilter.connect(trebleFilter);
+        trebleFilter.connect(gainNode);
+        gainNode.connect(analyserNode);
+        analyserNode.connect(audioContext.destination);
+
+        audioContextRef.current = audioContext;
+        audioFiltersRef.current = { bassFilter, midFilter, trebleFilter, gainNode };
+        setAnalyser(analyserNode);
+
+        if (item.aiParams) setAiParams(item.aiParams);
+        const np = { title: item.title, source: item.source || 'file' };
+        setNowPlaying(np);
+        updateNowPlaying(np);
+        setAudioLoaded(true);
+
+        try {
+          await audio.play();
+          setIsPlaying(true);
+        } catch (e) {
+          console.warn('Auto-play failed for queue item:', e);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [isHost, onQueuePlayNext, loadSoundCloudTrack, queueAdvance, updateNowPlaying]);
+
   const handleFileInput = (e) => {
     const file = e.target.files?.[0];
     if (file) handleFileSelect(file);
@@ -853,6 +939,9 @@ function App() {
 
       {/* Room Chat (shows when in a room) */}
       <RoomChat visible={audioLoaded && currentRoom !== null} />
+
+      {/* Queue Panel (shows when visualizer is active and in a room) */}
+      <QueuePanel visible={audioLoaded && currentRoom !== null} isAudience={isAudience} />
 
       {/* Host Miniplayer (shows when host is visiting another room OR on main menu) */}
       <HostMiniplayer
