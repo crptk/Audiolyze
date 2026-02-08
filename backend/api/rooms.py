@@ -16,6 +16,11 @@ Audio sync:
   - Host periodically sends sync_state (currentTime, isPlaying, playbackSpeed)
   - Host sends host_action for discrete events (play, pause, seek, shape change, etc.)
   - Audience applies these to stay in sync
+
+Host visiting:
+  - A host can "visit" another room without destroying their own
+  - Their room stays alive; audience keeps playing from their local audio chains
+  - Host gets a miniplayer overlay and can return any time
 """
 
 from __future__ import annotations
@@ -50,6 +55,8 @@ class User:
     ws: WebSocket
     room_id: str | None = None
     is_host: bool = False
+    # The room this user is hosting (persists even if they visit another room)
+    hosted_room_id: str | None = None
 
 
 @dataclass
@@ -82,6 +89,8 @@ class Room:
     last_sync: dict | None = None  # {currentTime, isPlaying, playbackSpeed, timestamp}
     # Last known host visualizer state for late-joiners
     host_visualizer_state: dict | None = None  # {shape, environment, audioTuning, ...}
+    # Whether host is currently visiting another room
+    host_visiting: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +114,7 @@ def _room_summary(room: Room) -> dict:
         "hostId": room.host_id,
         "isPublic": room.is_public,
         "nowPlaying": room.now_playing,
-        "audienceCount": max(0, len(room.members) - 1),
+        "audienceCount": max(0, len(room.members) - (0 if room.host_visiting else 1)),
         "createdAt": room.created_at,
     }
 
@@ -174,6 +183,17 @@ def _chat_msg_dict(msg: ChatMessage) -> dict:
         "timestamp": msg.timestamp,
         "isHost": msg.is_host,
         "isSystem": msg.is_system,
+    }
+
+
+def _hosted_room_summary(room: Room) -> dict:
+    """Summary of a room for the miniplayer when host is visiting elsewhere."""
+    return {
+        "id": room.id,
+        "name": room.name,
+        "nowPlaying": room.now_playing,
+        "audienceCount": max(0, len(room.members) - (0 if room.host_visiting else 1)),
+        "isPublic": room.is_public,
     }
 
 
@@ -254,7 +274,13 @@ async def room_websocket(ws: WebSocket):
 
             # ------ CREATE ROOM ------
             elif msg_type == "create_room":
-                await _leave_room(user)
+                # Leave current visited room if any, but keep hosted room logic
+                if user.room_id and user.room_id in rooms and user.room_id != user.hosted_room_id:
+                    await _leave_visited_room(user)
+
+                # If already hosting a room, close it first
+                if user.hosted_room_id and user.hosted_room_id in rooms:
+                    await _destroy_hosted_room(user)
 
                 room_id = str(uuid.uuid4())[:12]
                 room_name = raw.get("name", f"{user.name}'s Stage")[:50]
@@ -268,6 +294,7 @@ async def room_websocket(ws: WebSocket):
                 rooms[room_id] = room
                 user.room_id = room_id
                 user.is_host = True
+                user.hosted_room_id = room_id
 
                 await _send(ws, {
                     "type": "room_created",
@@ -288,7 +315,55 @@ async def room_websocket(ws: WebSocket):
                     await _send(ws, {"type": "error", "message": "Room is private"})
                     continue
 
-                await _leave_room(user)
+                # If host is joining another room, use "visit" mode
+                if user.hosted_room_id and user.hosted_room_id in rooms and user.hosted_room_id != target_id:
+                    # Leave any currently visited room first
+                    if user.room_id and user.room_id != user.hosted_room_id and user.room_id in rooms:
+                        await _leave_visited_room(user)
+                    
+                    hosted = rooms[user.hosted_room_id]
+                    hosted.host_visiting = True
+                    # Remove host from their own room's members (they're visiting)
+                    hosted.members.pop(user_id, None)
+                    
+                    # Join the target room as audience
+                    user.room_id = target_id
+                    user.is_host = False
+                    target.members[user_id] = user
+
+                    sys_msg = ChatMessage(
+                        id=str(uuid.uuid4())[:12],
+                        user_id="system",
+                        username="System",
+                        text=f"{user.name} joined the stage",
+                        timestamp=time.time(),
+                        is_system=True,
+                    )
+                    target.messages.append(sys_msg)
+
+                    recent = target.messages[-50:]
+                    await _send(ws, {
+                        "type": "room_joined",
+                        "room": _room_full(target),
+                        "members": _member_list(target),
+                        "messages": [_chat_msg_dict(m) for m in recent],
+                        "hostedRoom": _hosted_room_summary(hosted),
+                    })
+
+                    await _broadcast(target, {
+                        "type": "user_joined",
+                        "userId": user_id,
+                        "username": user.name,
+                        "members": _member_list(target),
+                        "systemMessage": _chat_msg_dict(sys_msg),
+                    }, exclude_id=user_id)
+
+                    await _broadcast_public_rooms()
+                    continue
+
+                # Normal join (non-host user)
+                if user.room_id and user.room_id in rooms:
+                    await _leave_room(user)
 
                 user.room_id = target_id
                 user.is_host = False
@@ -323,15 +398,74 @@ async def room_websocket(ws: WebSocket):
 
                 await _broadcast_public_rooms()
 
+            # ------ RETURN TO HOSTED ROOM ------
+            elif msg_type == "return_to_room":
+                if not user.hosted_room_id or user.hosted_room_id not in rooms:
+                    await _send(ws, {"type": "error", "message": "No hosted room to return to"})
+                    continue
+
+                hosted = rooms[user.hosted_room_id]
+
+                # Leave the currently visited room
+                if user.room_id and user.room_id != user.hosted_room_id and user.room_id in rooms:
+                    await _leave_visited_room(user)
+
+                # Re-join own room as host
+                hosted.host_visiting = False
+                hosted.members[user_id] = user
+                user.room_id = user.hosted_room_id
+                user.is_host = True
+
+                await _send(ws, {
+                    "type": "returned_to_room",
+                    "room": _room_full(hosted),
+                    "members": _member_list(hosted),
+                    "messages": [_chat_msg_dict(m) for m in hosted.messages[-50:]],
+                })
+
+                await _broadcast_public_rooms()
+
+            # ------ END HOSTED ROOM ------
+            elif msg_type == "end_room":
+                if not user.hosted_room_id or user.hosted_room_id not in rooms:
+                    continue
+                await _destroy_hosted_room(user)
+                await _send(ws, {"type": "hosted_room_ended"})
+
             # ------ LEAVE ROOM ------
             elif msg_type == "leave_room":
-                await _leave_room(user)
+                if user.hosted_room_id and user.room_id == user.hosted_room_id:
+                    # Host leaving their own room = destroy it
+                    await _leave_room(user)
+                elif user.room_id and user.room_id != user.hosted_room_id:
+                    # Visiting audience leaving the visited room
+                    await _leave_visited_room(user)
+                    # If they have a hosted room, return to it
+                    if user.hosted_room_id and user.hosted_room_id in rooms:
+                        hosted = rooms[user.hosted_room_id]
+                        hosted.host_visiting = False
+                        hosted.members[user_id] = user
+                        user.room_id = user.hosted_room_id
+                        user.is_host = True
+                        await _send(ws, {
+                            "type": "returned_to_room",
+                            "room": _room_full(hosted),
+                            "members": _member_list(hosted),
+                            "messages": [_chat_msg_dict(m) for m in hosted.messages[-50:]],
+                        })
+                    else:
+                        user.room_id = None
+                        user.is_host = False
+                        await _send(ws, {"type": "left_room"})
+                else:
+                    await _leave_room(user)
 
             # ------ TOGGLE PUBLIC ------
             elif msg_type == "toggle_public":
-                if not user.room_id or user.room_id not in rooms:
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
                     continue
-                room = rooms[user.room_id]
+                room = rooms[rid]
                 if room.host_id != user_id:
                     continue
 
@@ -340,14 +474,21 @@ async def room_websocket(ws: WebSocket):
                     "type": "room_updated",
                     "room": _room_summary(room),
                 })
+                # Also tell the host if they're visiting elsewhere
+                if user.room_id != rid:
+                    await _send(ws, {
+                        "type": "hosted_room_updated",
+                        "hostedRoom": _hosted_room_summary(room),
+                    })
                 await _broadcast_public_rooms()
 
             # ------ RENAME ROOM ------
             elif msg_type == "rename_room":
                 new_name = raw.get("name", "").strip()[:50]
-                if not new_name or not user.room_id or user.room_id not in rooms:
+                rid = user.hosted_room_id or user.room_id
+                if not new_name or not rid or rid not in rooms:
                     continue
-                room = rooms[user.room_id]
+                room = rooms[rid]
                 if room.host_id != user_id:
                     continue
                 room.name = new_name
@@ -360,9 +501,10 @@ async def room_websocket(ws: WebSocket):
 
             # ------ UPDATE NOW PLAYING ------
             elif msg_type == "update_now_playing":
-                if not user.room_id or user.room_id not in rooms:
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
                     continue
-                room = rooms[user.room_id]
+                room = rooms[rid]
                 if room.host_id != user_id:
                     continue
                 room.now_playing = raw.get("nowPlaying")
@@ -375,9 +517,10 @@ async def room_websocket(ws: WebSocket):
 
             # ------ SET AUDIO SOURCE (host tells server what track to play) ------
             elif msg_type == "set_audio_source":
-                if not user.room_id or user.room_id not in rooms:
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
                     continue
-                room = rooms[user.room_id]
+                room = rooms[rid]
                 if room.host_id != user_id:
                     continue
                 room.audio_source = raw.get("audioSource")
@@ -394,9 +537,10 @@ async def room_websocket(ws: WebSocket):
 
             # ------ SYNC STATE (host sends periodic playback state) ------
             elif msg_type == "sync_state":
-                if not user.room_id or user.room_id not in rooms:
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
                     continue
-                room = rooms[user.room_id]
+                room = rooms[rid]
                 if room.host_id != user_id:
                     continue
                 sync_data = {
@@ -413,9 +557,10 @@ async def room_websocket(ws: WebSocket):
 
             # ------ HOST ACTION (discrete control events) ------
             elif msg_type == "host_action":
-                if not user.room_id or user.room_id not in rooms:
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
                     continue
-                room = rooms[user.room_id]
+                room = rooms[rid]
                 if room.host_id != user_id:
                     continue
                 action = raw.get("action")
@@ -435,17 +580,23 @@ async def room_websocket(ws: WebSocket):
                     elif action == "anaglyph_toggle":
                         room.host_visualizer_state["anaglyphEnabled"] = payload.get("enabled")
 
-                if action == "play":
-                    room.last_sync = {"currentTime": payload.get("currentTime", 0), "isPlaying": True, "playbackSpeed": payload.get("playbackSpeed", 1), "timestamp": time.time()}
-                elif action == "pause":
-                    room.last_sync = {"currentTime": payload.get("currentTime", 0), "isPlaying": False, "playbackSpeed": payload.get("playbackSpeed", 1), "timestamp": time.time()}
-                elif action == "seek":
+                # Update last_sync for play/pause/seek/speed
+                if action == "play_pause":
+                    is_playing = payload.get("isPlaying", False)
                     if room.last_sync:
-                        room.last_sync["currentTime"] = payload.get("time", 0)
+                        room.last_sync["isPlaying"] = is_playing
+                        room.last_sync["timestamp"] = time.time()
+                    else:
+                        room.last_sync = {"currentTime": 0, "isPlaying": is_playing, "playbackSpeed": 1, "timestamp": time.time()}
+                elif action == "seek":
+                    ct = payload.get("currentTime", 0)
+                    if room.last_sync:
+                        room.last_sync["currentTime"] = ct
                         room.last_sync["timestamp"] = time.time()
                 elif action == "speed_change":
+                    spd = payload.get("speed", 1)
                     if room.last_sync:
-                        room.last_sync["playbackSpeed"] = payload.get("speed", 1)
+                        room.last_sync["playbackSpeed"] = spd
 
                 await _broadcast_to_audience(room, {
                     "type": "host_action",
@@ -481,13 +632,91 @@ async def room_websocket(ws: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error for {user_id}: {e}")
     finally:
-        await _leave_room(user)
+        # On disconnect: clean up visited room, then destroy hosted room
+        if user.room_id and user.hosted_room_id and user.room_id != user.hosted_room_id:
+            if user.room_id in rooms:
+                await _leave_visited_room(user)
+        if user.hosted_room_id and user.hosted_room_id in rooms:
+            user.room_id = user.hosted_room_id
+            user.is_host = True
+            await _leave_room(user)
+        elif user.room_id:
+            await _leave_room(user)
         users.pop(user_id, None)
 
 
 # ---------------------------------------------------------------------------
-# Leave room helper
+# Room cleanup helpers
 # ---------------------------------------------------------------------------
+
+async def _leave_visited_room(user: User):
+    """Remove user from a room they are visiting (not their hosted room)."""
+    if not user.room_id or user.room_id not in rooms:
+        return
+    room = rooms[user.room_id]
+    room.members.pop(user.id, None)
+
+    sys_msg = ChatMessage(
+        id=str(uuid.uuid4())[:12],
+        user_id="system",
+        username="System",
+        text=f"{user.name} left the stage",
+        timestamp=time.time(),
+        is_system=True,
+    )
+    room.messages.append(sys_msg)
+
+    await _broadcast(room, {
+        "type": "user_left",
+        "userId": user.id,
+        "username": user.name,
+        "members": _member_list(room),
+        "systemMessage": _chat_msg_dict(sys_msg),
+    })
+
+    if room.is_public:
+        await _broadcast_public_rooms()
+
+    user.room_id = None
+    user.is_host = False
+
+
+async def _destroy_hosted_room(user: User):
+    """Destroy a room the user is hosting."""
+    rid = user.hosted_room_id
+    if not rid or rid not in rooms:
+        user.hosted_room_id = None
+        return
+
+    room = rooms[rid]
+
+    # Clean up uploaded audio files
+    if room.audio_source and room.audio_source.get("type") == "upload":
+        file_url = room.audio_source.get("url", "")
+        filename = file_url.split("/")[-1] if file_url else ""
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        if os.path.isfile(filepath):
+            try:
+                os.remove(filepath)
+            except Exception:
+                pass
+
+    # Notify all members the room is closed
+    for member in list(room.members.values()):
+        if member.id != user.id:
+            member.room_id = None
+            member.is_host = False
+            await _send(member.ws, {"type": "room_closed", "reason": "Host ended the stage"})
+
+    rooms.pop(rid, None)
+    user.hosted_room_id = None
+
+    if user.room_id == rid:
+        user.room_id = None
+        user.is_host = False
+
+    await _broadcast_public_rooms()
+
 
 async def _leave_room(user: User):
     """Remove user from their current room, clean up if needed."""
@@ -498,14 +727,13 @@ async def _leave_room(user: User):
 
     room = rooms[user.room_id]
     room.members.pop(user.id, None)
-    was_host = user.is_host
+    was_host = (room.host_id == user.id)
     old_room_id = user.room_id
     user.is_host = False
     user.room_id = None
 
     if was_host or len(room.members) == 0:
         # Host left or room empty -> destroy room
-        # Clean up uploaded audio files for this room
         if room.audio_source and room.audio_source.get("type") == "upload":
             file_url = room.audio_source.get("url", "")
             filename = file_url.split("/")[-1] if file_url else ""
@@ -521,6 +749,10 @@ async def _leave_room(user: User):
             member.is_host = False
             await _send(member.ws, {"type": "room_closed", "reason": "Host left the stage"})
         rooms.pop(old_room_id, None)
+
+        if was_host:
+            user.hosted_room_id = None
+
         await _broadcast_public_rooms()
     else:
         sys_msg = ChatMessage(
@@ -540,6 +772,8 @@ async def _leave_room(user: User):
             "members": _member_list(room),
             "systemMessage": _chat_msg_dict(sys_msg),
         })
-        await _broadcast_public_rooms()
+
+        if room.is_public:
+            await _broadcast_public_rooms()
 
     await _send(user.ws, {"type": "left_room"})
