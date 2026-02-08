@@ -37,7 +37,7 @@ function App() {
   const [analyser, setAnalyser] = useState(null);
   const [currentShape, setCurrentShape] = useState(null);
   const [currentEnvironment, setCurrentEnvironment] = useState(ENVIRONMENTS.FIREFLIES);
-
+  const [anaglyphEnabled, setAnaglyphEnabled] = useState(false);
 
   const [audioTuning, setAudioTuning] = useState({
     bass: 1.0,
@@ -646,6 +646,7 @@ function App() {
           onShapeChanged={handleShapeChanged}
           resetRef={resetVisualizerRef}
           audioTuning={audioTuning}
+          anaglyphEnabled={anaglyphEnabled}
         />
       </div>
 
@@ -777,6 +778,8 @@ function App() {
         onNext={playNextInQueue}
         onPrevious={playPreviousInQueue}
         onPlaylistTrackSelect={playPlaylistTrack}
+        anaglyphEnabled={anaglyphEnabled}
+        onAnaglyphToggle={setAnaglyphEnabled}
         audioTuning={audioTuning}
         onAudioTuningChange={(val) => {
           setAudioTuning(val);

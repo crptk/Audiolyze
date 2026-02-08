@@ -7,6 +7,7 @@ import IdleVisualizer from '../scenes/IdleVisualizer';
 import StarField from './StarField';
 import AuroraRing from './AuroraRing';
 import EnvironmentManager from './EnvironmentManager';
+import AnaglyphEffect from './AnaglyphEffect';
 
 export default function VisualizerScene({
   audioFile = null,
@@ -19,6 +20,7 @@ export default function VisualizerScene({
   onShapeChanged = null,
   resetRef = null,
   audioTuning = null,
+  anaglyphEnabled = false,
 }) {
   const [beatData, setBeatData] = useState({
     beatHit: 0, expansion: 0, bassStrength: 0,
@@ -97,6 +99,9 @@ export default function VisualizerScene({
         manualShape={manualShape}
         audioTuning={audioTuning}
       />
+
+      {/* Anaglyph 3D Effect */}
+      <AnaglyphEffect enabled={anaglyphEnabled} />
     </Canvas>
   );
 }

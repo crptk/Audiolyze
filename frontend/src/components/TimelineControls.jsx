@@ -24,6 +24,8 @@ export default function TimelineControls({
   onNext,
   onPrevious,
   onPlaylistTrackSelect,
+  anaglyphEnabled = false,
+  onAnaglyphToggle,
   audioTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
   onAudioTuningChange,
   audioPlaybackTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
@@ -346,6 +348,21 @@ export default function TimelineControls({
             </div>
 
             <div className="dropdown-header" style={{ marginTop: '16px' }}>Controls</div>
+            <button
+              className={`effect-toggle-button ${anaglyphEnabled ? 'active' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onAnaglyphToggle) onAnaglyphToggle(!anaglyphEnabled);
+              }}
+              title={anaglyphEnabled ? 'Disable 3D Anaglyph' : 'Enable 3D Anaglyph (Red-Blue)'}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <circle cx="9" cy="10" r="3" style={{ stroke: anaglyphEnabled ? '#ff0000' : 'currentColor' }} />
+                <circle cx="15" cy="10" r="3" style={{ stroke: anaglyphEnabled ? '#00ffff' : 'currentColor' }} />
+              </svg>
+              <span>3D Anaglyph {anaglyphEnabled ? 'ON' : 'OFF'}</span>
+            </button>
             <button
               className="reset-button"
               onClick={(e) => {

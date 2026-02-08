@@ -576,6 +576,45 @@
   background: rgba(255, 255, 255, 0.4);
 }
 
+/* Effect Toggle Button */
+.effect-toggle-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  margin-bottom: 12px;
+}
+
+.effect-toggle-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+.effect-toggle-button.active {
+  background: linear-gradient(135deg, rgba(255, 0, 0, 0.15) 0%, rgba(0, 255, 255, 0.15) 100%);
+  border-color: rgba(255, 0, 255, 0.4);
+  color: #fff;
+  box-shadow: 0 0 20px rgba(255, 0, 255, 0.3);
+}
+
+.effect-toggle-button svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* Journey Mode Toggle */
 .journey-toggle {
   display: flex;
