@@ -6,6 +6,7 @@ export default function RoomHeader({ visible }) {
   const {
     currentRoom, isHost, isPublic, roomName, togglePublic,
     updateRoomName, leaveRoom, audience, username, setUsername,
+    isVisiting, hostedRoom,
   } = useRoom();
 
   // Room name editing

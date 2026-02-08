@@ -6,6 +6,7 @@ import BackButton from './components/BackButton';
 import StageSidebar from './components/StageSidebar';
 import RoomHeader from './components/RoomHeader';
 import RoomChat from './components/RoomChat';
+import HostMiniplayer from './components/HostMiniplayer';
 import { useRoom } from './context/RoomContext';
 import { ENVIRONMENTS, pickRandomEnvironment } from './components/EnvironmentManager';
 import './App.css';
@@ -14,6 +15,7 @@ import './styles/timeline.css';
 import './styles/stage-sidebar.css';
 import './styles/room-header.css';
 import './styles/room-chat.css';
+import './styles/host-miniplayer.css';
 
 function App() {
   const [audioLoaded, setAudioLoaded] = useState(false);
@@ -62,9 +64,14 @@ function App() {
   // Room context
   const { createRoom, updateNowPlaying, currentRoom, isHost, leaveRoom, publicRooms, joinRoom, 
     broadcastHostAction, onHostAction, setAudioSource, sendSyncState, uploadAudioFile,
-    audienceAudioSource, audienceAiParams, audienceSync } = useRoom();
+    audienceAudioSource, audienceAiParams, audienceSync,
+    initialVisualizerState, hostedRoom, isVisiting, returnToHostedRoom, endHostedRoom,
+    userId } = useRoom();
   
   const isAudience = !!currentRoom && !isHost;
+  
+  // Filter out user's own room from public rooms list (for landing page + sidebar)
+  const filteredPublicRooms = publicRooms.filter(room => room.hostId !== userId);
 
   const handleFileSelect = async (file) => {
     if (file && (file.type === 'audio/mpeg' || file.type === 'video/mp4' || file.name.endsWith('.m4v'))) {
@@ -450,7 +457,7 @@ function App() {
     }
   };
 
-  const handleBackToMenu = () => {
+  const resetAudioState = useCallback(() => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
     audioFiltersRef.current = null;
@@ -473,10 +480,27 @@ function App() {
     isPlayingFromQueueRef.current = false;
     setSoundcloudUrl('');
     setSoundcloudError('');
+    audienceLoadedSourceRef.current = null;
+  }, []);
 
+  const handleBackToMenu = () => {
+    resetAudioState();
     // Leave room
     leaveRoom();
   };
+
+  // Handle returning to hosted room from visiting another room
+  const handleReturnToHostedRoom = useCallback(() => {
+    resetAudioState();
+    returnToHostedRoom();
+    // The returned_to_room message will restore us to the host view
+    // We need to reload our own audio - this will be handled by the room state update
+  }, [resetAudioState, returnToHostedRoom]);
+
+  // Handle ending hosted room while visiting
+  const handleEndHostedRoom = useCallback(() => {
+    endHostedRoom();
+  }, [endHostedRoom]);
 
   useEffect(() => {
     if (!audioFiltersRef.current) return;
@@ -559,6 +583,14 @@ function App() {
     return () => clearInterval(syncInterval);
   }, [isHost, currentRoom, isPlaying, sendSyncState]);
 
+  // Keep a ref to audienceSync so the audio loading effect can read it without re-running
+  const audienceSyncRef = useRef(audienceSync);
+  useEffect(() => { audienceSyncRef.current = audienceSync; }, [audienceSync]);
+  
+  // Keep a ref to initialVisualizerState so the audio loading effect can read it once
+  const initialVisualizerStateRef = useRef(initialVisualizerState);
+  useEffect(() => { initialVisualizerStateRef.current = initialVisualizerState; }, [initialVisualizerState]);
+
   // AUDIENCE: load the host's audio when we receive the audio source
   const audienceLoadedSourceRef = useRef(null);
   useEffect(() => {
@@ -569,8 +601,6 @@ function App() {
     const sourceKey = JSON.stringify(audienceAudioSource);
     if (audienceLoadedSourceRef.current === sourceKey) return;
     audienceLoadedSourceRef.current = sourceKey;
-
-    console.log('[v0] Audience loading audio source:', audienceAudioSource);
 
     const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
     let audioUrl = audienceAudioSource.url;
@@ -627,19 +657,29 @@ function App() {
     setNowPlaying({ title: audienceAudioSource.title || 'Unknown', source: audienceAudioSource.type || 'stream' });
     setAudioLoaded(true);
 
-    // Apply the last known sync state (late-joiner catch up)
-    if (audienceSync) {
-      console.log('[v0] Applying initial sync:', audienceSync);
-      audio.currentTime = audienceSync.currentTime || 0;
-      audio.playbackRate = audienceSync.playbackSpeed || 1;
-      setPlaybackSpeed(audienceSync.playbackSpeed || 1);
-      setCurrentTime(audienceSync.currentTime || 0);
-      if (audienceSync.isPlaying) {
+    // Apply initial visualizer state (shape, environment, EQ, anaglyph) from host snapshot
+    const vs = initialVisualizerStateRef.current;
+    if (vs) {
+      if (vs.shape) setCurrentShape(vs.shape);
+      if (vs.environment) setCurrentEnvironment(vs.environment);
+      if (vs.audioTuning) setAudioTuning(vs.audioTuning);
+      if (vs.audioPlaybackTuning) setAudioPlaybackTuning(vs.audioPlaybackTuning);
+      if (vs.anaglyphEnabled !== undefined) setAnaglyphEnabled(vs.anaglyphEnabled);
+    }
+
+    // Apply the last known sync state (late-joiner catch up) - read from ref, not state
+    const syncSnapshot = audienceSyncRef.current;
+    if (syncSnapshot) {
+      audio.currentTime = syncSnapshot.currentTime || 0;
+      audio.playbackRate = syncSnapshot.playbackSpeed || 1;
+      setPlaybackSpeed(syncSnapshot.playbackSpeed || 1);
+      setCurrentTime(syncSnapshot.currentTime || 0);
+      if (syncSnapshot.isPlaying) {
         audio.play().catch(e => console.warn('Audience auto-play failed (browser policy):', e));
         setIsPlaying(true);
       }
     }
-  }, [isAudience, audienceAudioSource, audienceAiParams, audienceSync]);
+  }, [isAudience, audienceAudioSource, audienceAiParams]);
 
   // AUDIENCE: apply periodic sync corrections from host
   useEffect(() => {
@@ -685,6 +725,20 @@ function App() {
   };
 
   const handleJoinRoom = (room) => {
+    // If we're a host joining another room, clean up current audio for the visited room
+    if (isHost && currentRoom) {
+      // Reset audio state but don't leave room - joinRoom will handle the visit
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      if (audioContextRef.current) { try { audioContextRef.current.close(); } catch {} audioContextRef.current = null; }
+      audioFiltersRef.current = null;
+      setAnalyser(null);
+      setAiParams(null);
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setCurrentShape(null);
+      audienceLoadedSourceRef.current = null;
+    }
     joinRoom(room);
     setAudioLoaded(true); // Transition to visualizer view
   };
@@ -702,6 +756,14 @@ function App() {
 
       {/* Room Chat (shows when in a room) */}
       <RoomChat visible={audioLoaded && currentRoom !== null} />
+
+      {/* Host Miniplayer (shows when host is visiting another room) */}
+      <HostMiniplayer
+        visible={isVisiting && !!hostedRoom}
+        hostedRoom={hostedRoom}
+        onReturn={handleReturnToHostedRoom}
+        onEnd={handleEndHostedRoom}
+      />
 
       {/* Three.js Visualizer Background */}
       <div className={`visualizer-background ${audioLoaded ? 'unblurred' : ''}`}>
@@ -812,7 +874,7 @@ function App() {
           </div>
 
           {/* Scroll indicator */}
-          {publicRooms.length > 0 && (
+          {filteredPublicRooms.length > 0 && (
             <div className="scroll-indicator" onClick={scrollToStage}>
               <span className="scroll-indicator-text">Browse Stages</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -823,7 +885,7 @@ function App() {
         </div>
 
         {/* Stage Section (browse public rooms) */}
-        {publicRooms.length > 0 && (
+        {filteredPublicRooms.length > 0 && (
           <div className="stage-section">
             <div className="stage-section-header">
               <h2 className="stage-title">Join a Stage</h2>
@@ -831,7 +893,7 @@ function App() {
             </div>
 
             <div className="stage-rooms-grid">
-              {publicRooms.map((room) => (
+              {filteredPublicRooms.map((room) => (
                 <div key={room.id} className="stage-room-card" onClick={() => handleJoinRoom(room)}>
                   <div className="room-card-preview">
                     <span className="room-card-visualizer-placeholder">Visualizer Preview</span>

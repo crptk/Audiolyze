@@ -39,15 +39,19 @@ export function RoomProvider({ children }) {
   const [messages, setMessages] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
 
+  // ---- Hosted room state (persists when host visits another room) ----
+  const [hostedRoom, setHostedRoom] = useState(null); // {id, name, nowPlaying, audienceCount, isPublic}
+  const [isVisiting, setIsVisiting] = useState(false); // true when host is visiting another room
+
   // ---- Audience sync state ----
-  // When audience joins, they receive the audio source + AI params + last sync + host visualizer state
-  // These are used by App.jsx to load audio and sync playback
   const [audienceAudioSource, setAudienceAudioSource] = useState(null);
   const [audienceAiParams, setAudienceAiParams] = useState(null);
-  const [audienceSync, setAudienceSync] = useState(null); // {currentTime, isPlaying, playbackSpeed, timestamp}
+  const [audienceSync, setAudienceSync] = useState(null);
+  
+  // Initial visualizer state received on join (separate from live host actions)
+  const [initialVisualizerState, setInitialVisualizerState] = useState(null);
 
   // Host action queue - audience reads and clears these
-  // Using a callback pattern so App.jsx can subscribe
   const hostActionListenersRef = useRef([]);
 
   const wsRef = useRef(null);
@@ -89,14 +93,17 @@ export function RoomProvider({ children }) {
       case 'room_created':
         setCurrentRoom(data.room);
         setIsHost(true);
+        setIsVisiting(false);
         setRoomName(data.room.name);
         setIsPublic(data.room.isPublic);
         setMembers(data.members || []);
         setMessages([]);
+        setHostedRoom(null); // Will be set after room is fully created
         // Clear audience state since we're the host
         setAudienceAudioSource(null);
         setAudienceAiParams(null);
         setAudienceSync(null);
+        setInitialVisualizerState(null);
         break;
 
       case 'room_joined': {
@@ -107,26 +114,50 @@ export function RoomProvider({ children }) {
         setIsPublic(room.isPublic);
         setMembers(data.members || []);
         setMessages(data.messages || []);
+        
+        // If we got a hostedRoom back, we're visiting
+        if (data.hostedRoom) {
+          setHostedRoom(data.hostedRoom);
+          setIsVisiting(true);
+        }
+        
         // Set audience audio/sync state from the full room data
         setAudienceAudioSource(room.audioSource || null);
         setAudienceAiParams(room.aiParams || null);
         setAudienceSync(room.lastSync || null);
-        // Apply host visualizer state if available
-        if (room.hostVisualizerState) {
-          const vs = room.hostVisualizerState;
-          // Send as individual host_action events so App.jsx applies them
-          if (vs.shape) {
-            hostActionListenersRef.current.forEach(l => l({ action: 'shape_change', payload: { shape: vs.shape } }));
-          }
-          if (vs.environment) {
-            hostActionListenersRef.current.forEach(l => l({ action: 'environment_change', payload: { environment: vs.environment } }));
-          }
-          if (vs.audioTuning) {
-            hostActionListenersRef.current.forEach(l => l({ action: 'eq_change', payload: { audioTuning: vs.audioTuning, audioPlaybackTuning: vs.audioPlaybackTuning } }));
-          }
-        }
+        
+        // Store initial visualizer state separately so App.jsx can apply it after audio loads
+        setInitialVisualizerState(room.hostVisualizerState || null);
         break;
       }
+
+      case 'returned_to_room': {
+        const room = data.room;
+        setCurrentRoom(room);
+        setIsHost(true);
+        setIsVisiting(false);
+        setRoomName(room.name);
+        setIsPublic(room.isPublic);
+        setMembers(data.members || []);
+        setMessages(data.messages || []);
+        // Clear audience state - we're the host again
+        setAudienceAudioSource(null);
+        setAudienceAiParams(null);
+        setAudienceSync(null);
+        setInitialVisualizerState(null);
+        break;
+      }
+
+      case 'hosted_room_ended':
+        setHostedRoom(null);
+        setIsVisiting(false);
+        break;
+
+      case 'hosted_room_updated':
+        if (data.hostedRoom) {
+          setHostedRoom(data.hostedRoom);
+        }
+        break;
 
       case 'room_updated':
         setCurrentRoom(data.room);
@@ -137,6 +168,12 @@ export function RoomProvider({ children }) {
       case 'user_joined':
         setMembers(data.members || []);
         if (data.systemMessage) setMessages(prev => [...prev, data.systemMessage]);
+        // Update hosted room audience count if we're visiting
+        setHostedRoom(prev => {
+          if (!prev) return prev;
+          // Audience count will be refreshed via public_rooms updates
+          return prev;
+        });
         break;
 
       case 'user_left':
@@ -162,6 +199,10 @@ export function RoomProvider({ children }) {
         setAudienceAudioSource(null);
         setAudienceAiParams(null);
         setAudienceSync(null);
+        setInitialVisualizerState(null);
+        // If the closed room was our hosted room, clear that too
+        setHostedRoom(null);
+        setIsVisiting(false);
         break;
 
       case 'left_room':
@@ -174,10 +215,25 @@ export function RoomProvider({ children }) {
         setAudienceAudioSource(null);
         setAudienceAiParams(null);
         setAudienceSync(null);
+        setInitialVisualizerState(null);
         break;
 
       case 'public_rooms':
         setPublicRooms(data.rooms || []);
+        // Update hosted room info from public rooms if visiting
+        setHostedRoom(prev => {
+          if (!prev) return prev;
+          const updated = (data.rooms || []).find(r => r.id === prev.id);
+          if (updated) {
+            return {
+              ...prev,
+              audienceCount: updated.audienceCount,
+              nowPlaying: updated.nowPlaying,
+              name: updated.name,
+            };
+          }
+          return prev;
+        });
         break;
 
       // ---- Audience sync messages ----
@@ -287,6 +343,14 @@ export function RoomProvider({ children }) {
     wsSend({ type: 'leave_room' });
   }, [wsSend]);
 
+  const returnToHostedRoom = useCallback(() => {
+    wsSend({ type: 'return_to_room' });
+  }, [wsSend]);
+
+  const endHostedRoom = useCallback(() => {
+    wsSend({ type: 'end_room' });
+  }, [wsSend]);
+
   const togglePublic = useCallback(() => {
     wsSend({ type: 'toggle_public' });
   }, [wsSend]);
@@ -346,9 +410,12 @@ export function RoomProvider({ children }) {
     messages, sendMessage,
     createRoom, joinRoom, leaveRoom, togglePublic, updateRoomName, updateNowPlaying,
     isConnected,
+    // Hosted room (for miniplayer when visiting)
+    hostedRoom, isVisiting, returnToHostedRoom, endHostedRoom,
     // Audio sync
     setAudioSource, sendSyncState, broadcastHostAction, uploadAudioFile,
     audienceAudioSource, audienceAiParams, audienceSync,
+    initialVisualizerState,
     onHostAction,
   };
 
