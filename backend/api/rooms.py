@@ -81,6 +81,7 @@ class QueueItem:
     status: str = "pending"  # pending | analyzing | ready | playing | played
     ai_params: dict | None = None
     soundcloud_url: str | None = None  # original SoundCloud URL for re-downloading
+    download_status: str = "pending"  # pending | downloading | ready | failed
 
 
 @dataclass
@@ -229,16 +230,18 @@ def _hosted_room_summary(room: Room) -> dict:
 
 
 def _queue_item_dict(item: QueueItem) -> dict:
+    """Serialize a QueueItem for JSON broadcast."""
     return {
         "id": item.id,
         "title": item.title,
         "source": item.source,
         "url": item.url,
-        "addedBy": item.added_by,
-        "addedByName": item.added_by_name,
+        "added_by": item.added_by,
+        "added_by_name": item.added_by_name,
         "status": item.status,
-        "aiParams": item.ai_params,
-        "soundcloudUrl": item.soundcloud_url,
+        "ai_params": item.ai_params,
+        "soundcloud_url": item.soundcloud_url,
+        "download_status": item.download_status,
     }
 
 
@@ -269,6 +272,50 @@ async def _broadcast_queue(room: Room):
         "type": "queue_update",
         **_queue_state(room),
     })
+
+
+async def _predownload_priority_tracks(room: Room):
+    """
+    Pre-download SoundCloud tracks in the priority queue (top 3).
+    This ensures instant playback when advancing to the next track.
+    """
+    import asyncio
+    import aiohttp
+    
+    priority_items = [item for item in room.queue if item.status in ["playing", "priority"]][:3]
+    
+    for item in priority_items:
+        # Skip if already downloaded or not a SoundCloud track
+        if item.source != "soundcloud":
+            continue
+        if not item.soundcloud_url:
+            continue
+        # Check if already has a downloaded blob URL
+        if item.url and item.url.startswith("/soundcloud/file/"):
+            continue
+            
+        # Download in background
+        logger.info(f"Pre-downloading SoundCloud track: {item.title}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "http://127.0.0.1:8000/soundcloud/download",
+                    json={"url": item.soundcloud_url},
+                    timeout=aiohttp.ClientTimeout(total=120)
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("ok"):
+                            item.url = data["file_url"]
+                            logger.info(f"Pre-downloaded: {item.title} -> {item.url}")
+                        else:
+                            logger.error(f"Download failed for {item.title}: {data.get('error')}")
+                    else:
+                        logger.error(f"Download request failed for {item.title}: {resp.status}")
+        except asyncio.TimeoutError:
+            logger.error(f"Download timeout for {item.title}")
+        except Exception as e:
+            logger.error(f"Download error for {item.title}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +803,8 @@ async def room_websocket(ws: WebSocket):
                 )
                 room.queue.append(item)
                 await _broadcast_queue(room)
+                # Pre-download if it enters priority queue
+                asyncio.create_task(_predownload_priority_tracks(room))
 
             # ------ QUEUE: REMOVE SONG (host only) ------
             elif msg_type == "queue_remove":
@@ -769,6 +818,8 @@ async def room_websocket(ws: WebSocket):
                 # Can only remove items that aren't currently playing
                 room.queue = [q for q in room.queue if not (q.id == item_id and q.status != "playing")]
                 await _broadcast_queue(room)
+                # Pre-download if removal caused new tracks to enter priority
+                asyncio.create_task(_predownload_priority_tracks(room))
 
             # ------ QUEUE: REORDER (host only, low-priority items only) ------
             elif msg_type == "queue_reorder":
@@ -796,6 +847,7 @@ async def room_websocket(ws: WebSocket):
                 reordered.extend(id_to_item.values())
                 room.queue = played + priority + reordered
                 await _broadcast_queue(room)
+                # No need to predownload on reorder - only low priority items move
 
             # ------ QUEUE: UPDATE ITEM STATUS (host only, e.g. mark as analyzing/ready) ------
             elif msg_type == "queue_update_item":
@@ -843,6 +895,8 @@ async def room_websocket(ws: WebSocket):
                         "item": _queue_item_dict(next_item),
                     })
                 await _broadcast_queue(room)
+                # Pre-download newly priority tracks after advance
+                asyncio.create_task(_predownload_priority_tracks(room))
 
             # ------ SUGGEST SONG (audience) ------
             elif msg_type == "suggest_song":
