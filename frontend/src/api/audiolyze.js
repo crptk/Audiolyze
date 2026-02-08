@@ -74,14 +74,6 @@ export async function fetchAIParams(file) {
   const shapeChanges = structure.shapeChanges ?? [];  // ✅ camelCase
   const sections = structure.sections ?? [];
 
-  // 🔎 Debug (keep these for now)
-  console.log("[v0] Raw analyzeData.structure:", structure);
-  console.log("[v0] Extracted journeys:", journeys);
-  console.log("[v0] Extracted shapeChanges:", shapeChanges);
-  console.log("[v0] Extracted sections:", sections);
-  console.log("[v0] Beat count:", beats.length);
-  console.log("[v0] paramsData.params keys:", Object.keys(paramsData.params || {}));
-
   // Final params object passed to frontend
   const result = {
     ...paramsData.params,
@@ -90,9 +82,6 @@ export async function fetchAIParams(file) {
     shapeChanges,
     sections,
   };
-
-  console.log("[v0] Final aiParams.journeys:", result.journeys);
-  console.log("[v0] Final aiParams.shapeChanges:", result.shapeChanges);
 
   return result;
 }

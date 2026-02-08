@@ -3,10 +3,13 @@ import { useRoom } from '../context/RoomContext';
 import '../styles/stage-sidebar.css';
 
 export default function StageSidebar({ visible }) {
-  const { publicRooms, joinRoom, currentRoom } = useRoom();
+  const { publicRooms, joinRoom, currentRoom, hostedRoom, userId } = useRoom();
   const [isOpen, setIsOpen] = useState(false);
 
   if (!visible) return null;
+
+  // Filter out the user's own hosted room from the list
+  const filteredRooms = publicRooms.filter(room => room.hostId !== userId);
 
   return (
     <>
@@ -20,8 +23,8 @@ export default function StageSidebar({ visible }) {
           <path d="M3 12h18M3 6h18M3 18h18" />
         </svg>
         <span className="stage-sidebar-toggle-label">Stage</span>
-        {publicRooms.length > 0 && (
-          <span className="stage-sidebar-badge">{publicRooms.length}</span>
+        {filteredRooms.length > 0 && (
+          <span className="stage-sidebar-badge">{filteredRooms.length}</span>
         )}
       </button>
 
@@ -38,7 +41,7 @@ export default function StageSidebar({ visible }) {
         </div>
 
         <div className="stage-sidebar-rooms">
-          {publicRooms.length === 0 ? (
+          {filteredRooms.length === 0 ? (
             <div className="stage-sidebar-empty">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.4">
                 <circle cx="12" cy="12" r="10" />
@@ -48,7 +51,7 @@ export default function StageSidebar({ visible }) {
               <span>Start playing music to create one</span>
             </div>
           ) : (
-            publicRooms.map((room) => (
+            filteredRooms.map((room) => (
               <button
                 key={room.id}
                 className={`stage-sidebar-room ${currentRoom?.id === room.id ? 'active' : ''}`}

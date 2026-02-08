@@ -7,6 +7,7 @@ import StageSidebar from './components/StageSidebar';
 import RoomHeader from './components/RoomHeader';
 import RoomChat from './components/RoomChat';
 import HostMiniplayer from './components/HostMiniplayer';
+import QueuePanel from './components/QueuePanel';
 import { useRoom } from './context/RoomContext';
 import { ENVIRONMENTS, pickRandomEnvironment } from './components/EnvironmentManager';
 import './App.css';
@@ -31,11 +32,6 @@ function App() {
 
   // Now playing info
   const [nowPlaying, setNowPlaying] = useState(null);
-
-  // Playlist queue
-  const [playlistQueue, setPlaylistQueue] = useState([]);
-  const [playlistIndex, setPlaylistIndex] = useState(-1);
-  const isPlayingFromQueueRef = useRef(false);
 
   // Audio playback state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -65,8 +61,9 @@ function App() {
   const { createRoom, updateNowPlaying, currentRoom, isHost, leaveRoom, publicRooms, joinRoom, 
     broadcastHostAction, onHostAction, setAudioSource, sendSyncState, uploadAudioFile,
     audienceAudioSource, audienceAiParams, audienceSync,
-    initialVisualizerState, hostedRoom, isVisiting, returnToHostedRoom, endHostedRoom,
-    userId } = useRoom();
+    initialVisualizerState, hostedRoom, isVisiting, isOnMenu, goToMenu, returnToHostedRoom, endHostedRoom,
+    hostReturnData, clearHostReturnData, userId,
+    queueAdd, queueAdvance, onQueuePlayNext } = useRoom();
   
   const isAudience = !!currentRoom && !isHost;
   
@@ -93,6 +90,8 @@ function App() {
       audio.addEventListener('ended', () => {
         setIsPlaying(false);
         setCurrentTime(0);
+        // Host: advance the queue when a song finishes
+        if (isHost) queueAdvance();
       });
 
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -222,6 +221,11 @@ function App() {
     if (resetVisualizerRef.current) resetVisualizerRef.current();
   };
 
+  const handleSkip = () => {
+    if (!isHost) return;
+    queueAdvance();
+  };
+
   const manualShapeChangeRef = useRef(false);
 
   const handleShapeChanged = (newShape) => {
@@ -264,7 +268,8 @@ function App() {
     audio.addEventListener('ended', () => {
       setIsPlaying(false);
       setCurrentTime(0);
-      if (isPlayingFromQueueRef.current) playNextInQueue();
+      // Advance queue if host
+      if (isHost) queueAdvance();
     });
 
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -324,89 +329,13 @@ function App() {
       { type: 'soundcloud', url: blobUrl, title },
       params
     );
-  }, [currentRoom, createRoom, updateNowPlaying, setAudioSource]);
+  }, [currentRoom, createRoom, updateNowPlaying, setAudioSource, isHost, queueAdvance]);
 
-  const playNextInQueue = useCallback(async () => {
-    setPlaylistIndex(prev => {
-      const nextIdx = prev + 1;
-      if (nextIdx >= playlistQueue.length) {
-        isPlayingFromQueueRef.current = false;
-        return prev;
-      }
-      const nextTrack = playlistQueue[nextIdx];
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-      if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
-      audioFiltersRef.current = null;
-      setAnalyser(null); setAiParams(null); setIsPlaying(false); setCurrentTime(0); setDuration(0); setCurrentShape(null);
 
-      (async () => {
-        setIsLoading(true);
-        setLoadingMessage(`Downloading: ${nextTrack.title}...`);
-        try {
-          const downloadData = await fetchSoundCloudDownload(nextTrack.url);
-          if (!downloadData.ok) { playNextInQueue(); return; }
-          const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
-          await loadSoundCloudTrack(blobUrl, nextTrack.title);
-        } catch (err) {
-          console.error('Failed to download track:', nextTrack.title, err);
-          isPlayingFromQueueRef.current = true;
-          playNextInQueue();
-        }
-      })();
-      return nextIdx;
-    });
-  }, [playlistQueue, loadSoundCloudTrack]);
 
-  const playPreviousInQueue = useCallback(async () => {
-    setPlaylistIndex(prev => {
-      const prevIdx = prev - 1;
-      if (prevIdx < 0) return prev;
-      const prevTrack = playlistQueue[prevIdx];
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-      if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
-      audioFiltersRef.current = null;
-      setAnalyser(null); setAiParams(null); setIsPlaying(false); setCurrentTime(0); setDuration(0); setCurrentShape(null);
 
-      (async () => {
-        setIsLoading(true);
-        setLoadingMessage(`Downloading: ${prevTrack.title}...`);
-        try {
-          const downloadData = await fetchSoundCloudDownload(prevTrack.url);
-          if (!downloadData.ok) return;
-          const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
-          await loadSoundCloudTrack(blobUrl, prevTrack.title);
-        } catch (err) {
-          console.error('Failed to download track:', prevTrack.title, err);
-        }
-      })();
-      return prevIdx;
-    });
-  }, [playlistQueue, loadSoundCloudTrack]);
 
-  const playPlaylistTrack = useCallback(async (trackIndex) => {
-    if (trackIndex < 0 || trackIndex >= playlistQueue.length) return;
-    if (trackIndex === playlistIndex) return;
-    const selectedTrack = playlistQueue[trackIndex];
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-    if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
-    audioFiltersRef.current = null;
-    setAnalyser(null); setAiParams(null); setIsPlaying(false); setCurrentTime(0); setDuration(0); setCurrentShape(null);
 
-    setIsLoading(true);
-    setLoadingMessage(`Downloading: ${selectedTrack.title}...`);
-    setPlaylistIndex(trackIndex);
-
-    try {
-      const downloadData = await fetchSoundCloudDownload(selectedTrack.url);
-      if (!downloadData.ok) { setIsLoading(false); setLoadingMessage(''); return; }
-      const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
-      await loadSoundCloudTrack(blobUrl, selectedTrack.title);
-    } catch (err) {
-      console.error('Failed to download track:', selectedTrack.title, err);
-      setIsLoading(false);
-      setLoadingMessage('');
-    }
-  }, [playlistQueue, playlistIndex, loadSoundCloudTrack]);
 
   const handleSoundCloudSubmit = async () => {
     if (!soundcloudUrl.trim()) return;
@@ -427,9 +356,7 @@ function App() {
           setSoundcloudError('Playlist is empty');
           setIsLoading(false); setLoadingMessage(''); return;
         }
-        setPlaylistQueue(tracks);
-        setPlaylistIndex(0);
-        isPlayingFromQueueRef.current = true;
+        // Download and play the first track immediately
         const firstTrack = tracks[0];
         setLoadingMessage(`Downloading: ${firstTrack.title}...`);
         const downloadData = await fetchSoundCloudDownload(firstTrack.url);
@@ -437,8 +364,13 @@ function App() {
           setSoundcloudError('Failed to download first track');
           setIsLoading(false); setLoadingMessage(''); return;
         }
-        const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
+        const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+        const blobUrl = `${apiBase}${downloadData.file_url}`;
         await loadSoundCloudTrack(blobUrl, firstTrack.title);
+        // Add remaining tracks to the server-side queue
+        for (let i = 1; i < tracks.length; i++) {
+          queueAdd(tracks[i].title, 'soundcloud', tracks[i].url, tracks[i].url);
+        }
       } else {
         setLoadingMessage(`Downloading: ${info.title}...`);
         const downloadData = await fetchSoundCloudDownload(soundcloudUrl.trim());
@@ -446,7 +378,8 @@ function App() {
           setSoundcloudError(downloadData.error || 'Download failed');
           setIsLoading(false); setLoadingMessage(''); return;
         }
-        const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
+        const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+        const blobUrl = `${apiBase}${downloadData.file_url}`;
         await loadSoundCloudTrack(blobUrl, info.title);
       }
     } catch (err) {
@@ -475,27 +408,40 @@ function App() {
     setAudioTuning({ bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 });
     setAudioPlaybackTuning({ bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 });
     setNowPlaying(null);
-    setPlaylistQueue([]);
-    setPlaylistIndex(-1);
-    isPlayingFromQueueRef.current = false;
-    setSoundcloudUrl('');
-    setSoundcloudError('');
     audienceLoadedSourceRef.current = null;
   }, []);
 
   const handleBackToMenu = () => {
     resetAudioState();
-    // Leave room
-    leaveRoom();
+    // If host, don't destroy the room - go to menu with room alive
+    if (isHost && currentRoom) {
+      goToMenu();
+    } else if (isVisiting && hostedRoom) {
+      // Host visiting another room, go to menu (room stays alive)
+      goToMenu();
+    } else {
+      // Non-host audience member, or no room - just leave
+      leaveRoom();
+    }
   };
 
-  // Handle returning to hosted room from visiting another room
+  // Handle returning to hosted room from visiting another room or menu
   const handleReturnToHostedRoom = useCallback(() => {
-    resetAudioState();
+    // Clean up current audio chain
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (audioContextRef.current) { try { audioContextRef.current.close(); } catch {} audioContextRef.current = null; }
+    audioFiltersRef.current = null;
+    setAnalyser(null);
+    setAiParams(null);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setCurrentShape(null);
+    audienceLoadedSourceRef.current = null;
+    // Tell the server to return us to our hosted room
     returnToHostedRoom();
-    // The returned_to_room message will restore us to the host view
-    // We need to reload our own audio - this will be handled by the room state update
-  }, [resetAudioState, returnToHostedRoom]);
+    // returned_to_room response will set hostReturnData which triggers audio reload below
+  }, [returnToHostedRoom]);
 
   // Handle ending hosted room while visiting
   const handleEndHostedRoom = useCallback(() => {
@@ -524,7 +470,6 @@ function App() {
 
     const unsubscribe = onHostAction((msg) => {
       const { action, payload } = msg;
-      console.log('[v0] Audience received host_action:', action, payload);
       switch (action) {
         case 'play_pause':
           if (audioRef.current && payload.isPlaying !== undefined) {
@@ -582,6 +527,85 @@ function App() {
     }, 2000);
     return () => clearInterval(syncInterval);
   }, [isHost, currentRoom, isPlaying, sendSyncState]);
+
+  // HOST RETURN: reload audio when returning to hosted room
+  useEffect(() => {
+    if (!hostReturnData || !isHost) return;
+    const { audioSource, aiParams: returnAiParams, lastSync, hostVisualizerState } = hostReturnData;
+    clearHostReturnData();
+    
+    if (!audioSource) return;
+
+    const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+    let audioUrl = audioSource.url;
+    if (audioUrl && audioUrl.startsWith('/')) {
+      audioUrl = apiBase + audioUrl;
+    }
+
+    // Build audio chain
+    const audio = new Audio();
+    audio.crossOrigin = "anonymous";
+    audio.src = audioUrl;
+    audioRef.current = audio;
+
+    audio.addEventListener('loadedmetadata', () => { setDuration(audio.duration); });
+    audio.addEventListener('timeupdate', () => { setCurrentTime(audio.currentTime); });
+    audio.addEventListener('ended', () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      queueAdvance();
+    });
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const analyserNode = audioContext.createAnalyser();
+    analyserNode.fftSize = 2048;
+
+    const bassFilter = audioContext.createBiquadFilter();
+    bassFilter.type = 'lowshelf'; bassFilter.frequency.value = 200; bassFilter.gain.value = 0;
+    const midFilter = audioContext.createBiquadFilter();
+    midFilter.type = 'peaking'; midFilter.frequency.value = 1500; midFilter.Q.value = 1.0; midFilter.gain.value = 0;
+    const trebleFilter = audioContext.createBiquadFilter();
+    trebleFilter.type = 'highshelf'; trebleFilter.frequency.value = 4000; trebleFilter.gain.value = 0;
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = 1.0;
+
+    const source = audioContext.createMediaElementSource(audio);
+    source.connect(bassFilter);
+    bassFilter.connect(midFilter);
+    midFilter.connect(trebleFilter);
+    trebleFilter.connect(gainNode);
+    gainNode.connect(analyserNode);
+    analyserNode.connect(audioContext.destination);
+
+    audioContextRef.current = audioContext;
+    audioFiltersRef.current = { bassFilter, midFilter, trebleFilter, gainNode };
+    setAnalyser(analyserNode);
+
+    if (returnAiParams) setAiParams(returnAiParams);
+    setNowPlaying({ title: audioSource.title || 'Unknown', source: audioSource.type || 'stream' });
+    setAudioLoaded(true);
+
+    // Apply visualizer state
+    if (hostVisualizerState) {
+      if (hostVisualizerState.shape) setCurrentShape(hostVisualizerState.shape);
+      if (hostVisualizerState.environment) setCurrentEnvironment(hostVisualizerState.environment);
+      if (hostVisualizerState.audioTuning) setAudioTuning(hostVisualizerState.audioTuning);
+      if (hostVisualizerState.audioPlaybackTuning) setAudioPlaybackTuning(hostVisualizerState.audioPlaybackTuning);
+      if (hostVisualizerState.anaglyphEnabled !== undefined) setAnaglyphEnabled(hostVisualizerState.anaglyphEnabled);
+    }
+
+    // Resume from last sync position
+    if (lastSync) {
+      audio.currentTime = lastSync.currentTime || 0;
+      audio.playbackRate = lastSync.playbackSpeed || 1;
+      setPlaybackSpeed(lastSync.playbackSpeed || 1);
+      setCurrentTime(lastSync.currentTime || 0);
+      if (lastSync.isPlaying) {
+        audio.play().catch(e => console.warn('Host auto-play on return failed:', e));
+        setIsPlaying(true);
+      }
+    }
+  }, [hostReturnData, isHost, clearHostReturnData, queueAdvance]);
 
   // Keep a ref to audienceSync so the audio loading effect can read it without re-running
   const audienceSyncRef = useRef(audienceSync);
@@ -703,6 +727,115 @@ function App() {
     }
   }, [isAudience, audienceSync]);
 
+  // HOST: Listen for queue_play_next events from the server
+  useEffect(() => {
+    if (!isHost || !onQueuePlayNext) return;
+    const unsubscribe = onQueuePlayNext(async (item) => {
+      if (!item) return;
+      // Load the next queue item
+      const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+      
+      // Clean up current audio
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      if (audioContextRef.current) { try { audioContextRef.current.close(); } catch {} audioContextRef.current = null; }
+      audioFiltersRef.current = null;
+      setAnalyser(null);
+      setAiParams(null);
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setCurrentShape(null);
+
+      if (item.source === 'soundcloud' && item.url) {
+        // Check if URL is a backend blob URL or a raw SoundCloud URL
+        let blobUrl = item.url;
+        if (blobUrl.startsWith('http://') || blobUrl.startsWith('https://')) {
+          if (blobUrl.includes('soundcloud.com')) {
+            // Raw SoundCloud URL - download it first
+            try {
+              setIsLoading(true);
+              setLoadingMessage(`Downloading: ${item.title}...`);
+              const downloadData = await fetchSoundCloudDownload(blobUrl);
+              if (!downloadData.ok) {
+                console.error('Failed to download SoundCloud track:', downloadData.error);
+                setIsLoading(false);
+                setLoadingMessage('');
+                return;
+              }
+              blobUrl = `${apiBase}${downloadData.file_url}`;
+              setIsLoading(false);
+              setLoadingMessage('');
+            } catch (e) {
+              console.error('Error downloading SoundCloud track:', e);
+              setIsLoading(false);
+              setLoadingMessage('');
+              return;
+            }
+          }
+        } else if (blobUrl.startsWith('/')) {
+          blobUrl = apiBase + blobUrl;
+        }
+        await loadSoundCloudTrack(blobUrl, item.title);
+      } else if (item.url) {
+        // Uploaded file URL
+        let fileUrl = item.url;
+        if (fileUrl.startsWith('/')) fileUrl = apiBase + fileUrl;
+        
+        const audio = new Audio();
+        audio.crossOrigin = "anonymous";
+        audio.src = fileUrl;
+        audioRef.current = audio;
+
+        audio.addEventListener('loadedmetadata', () => { setDuration(audio.duration); });
+        audio.addEventListener('timeupdate', () => { setCurrentTime(audio.currentTime); });
+        audio.addEventListener('ended', () => {
+          setIsPlaying(false);
+          setCurrentTime(0);
+          queueAdvance();
+        });
+
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const analyserNode = audioContext.createAnalyser();
+        analyserNode.fftSize = 2048;
+
+        const bassFilter = audioContext.createBiquadFilter();
+        bassFilter.type = 'lowshelf'; bassFilter.frequency.value = 200; bassFilter.gain.value = 0;
+        const midFilter = audioContext.createBiquadFilter();
+        midFilter.type = 'peaking'; midFilter.frequency.value = 1500; midFilter.Q.value = 1.0; midFilter.gain.value = 0;
+        const trebleFilter = audioContext.createBiquadFilter();
+        trebleFilter.type = 'highshelf'; trebleFilter.frequency.value = 4000; trebleFilter.gain.value = 0;
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = 1.0;
+
+        const source = audioContext.createMediaElementSource(audio);
+        source.connect(bassFilter);
+        bassFilter.connect(midFilter);
+        midFilter.connect(trebleFilter);
+        trebleFilter.connect(gainNode);
+        gainNode.connect(analyserNode);
+        analyserNode.connect(audioContext.destination);
+
+        audioContextRef.current = audioContext;
+        audioFiltersRef.current = { bassFilter, midFilter, trebleFilter, gainNode };
+        setAnalyser(analyserNode);
+
+        if (item.aiParams) setAiParams(item.aiParams);
+        const np = { title: item.title, source: item.source || 'file' };
+        setNowPlaying(np);
+        updateNowPlaying(np);
+        setAudioLoaded(true);
+
+        try {
+          await audio.play();
+          setIsPlaying(true);
+        } catch (e) {
+          console.warn('Auto-play failed for queue item:', e);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [isHost, onQueuePlayNext, loadSoundCloudTrack, queueAdvance, updateNowPlaying, fetchSoundCloudDownload]);
+
   const handleFileInput = (e) => {
     const file = e.target.files?.[0];
     if (file) handleFileSelect(file);
@@ -757,9 +890,12 @@ function App() {
       {/* Room Chat (shows when in a room) */}
       <RoomChat visible={audioLoaded && currentRoom !== null} />
 
-      {/* Host Miniplayer (shows when host is visiting another room) */}
+      {/* Queue Panel (shows when visualizer is active and in a room) */}
+      <QueuePanel visible={audioLoaded && currentRoom !== null} isAudience={isAudience} />
+
+      {/* Host Miniplayer (shows when host is visiting another room OR on main menu) */}
       <HostMiniplayer
-        visible={isVisiting && !!hostedRoom}
+        visible={!!hostedRoom && (isVisiting || isOnMenu)}
         hostedRoom={hostedRoom}
         onReturn={handleReturnToHostedRoom}
         onEnd={handleEndHostedRoom}
@@ -814,63 +950,96 @@ function App() {
             <h1 className="title">Audiolyze</h1>
             <p className="tagline">Your music, on stage.</p>
 
-            <div
-              className={`upload-box ${isDragging ? 'dragging' : ''}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => document.getElementById('file-input').click()}
-            >
-              <div className="upload-content">
-                <p className="upload-text">
-                  Import or Drag & Drop Music
-                  <br />
-                  to get started.
-                </p>
-                <svg className="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                <p className="accepted-formats">Accepted: .mp3, .m4v</p>
+            {hostedRoom ? (
+              /* Host has an active room - show return banner instead of upload */
+              <div className="hosting-banner" onClick={handleReturnToHostedRoom}>
+                <div className="hosting-banner-content">
+                  <div className="hosting-banner-pulse-wrapper">
+                    <span className="hosting-banner-pulse"></span>
+                  </div>
+                  <div className="hosting-banner-text">
+                    <p className="hosting-banner-title">You're hosting a stage!</p>
+                    <p className="hosting-banner-sub">
+                      {hostedRoom.nowPlaying ? (
+                        <>Playing: <span className="hosting-banner-track">{hostedRoom.nowPlaying.title}</span></>
+                      ) : (
+                        'Your stage is live'
+                      )}
+                      {(hostedRoom.audienceCount > 0) && (
+                        <> &middot; {hostedRoom.audienceCount} listening</>
+                      )}
+                    </p>
+                  </div>
+                  <div className="hosting-banner-action">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                    <span>Return to your stage</span>
+                  </div>
+                </div>
               </div>
-              <input
-                id="file-input"
-                type="file"
-                accept=".mp3,.m4v,audio/mpeg,video/mp4"
-                onChange={handleFileInput}
-                style={{ display: 'none' }}
-              />
-            </div>
+            ) : (
+              /* Normal upload flow */
+              <>
+                <div
+                  className={`upload-box ${isDragging ? 'dragging' : ''}`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => document.getElementById('file-input').click()}
+                >
+                  <div className="upload-content">
+                    <p className="upload-text">
+                      Import or Drag & Drop Music
+                      <br />
+                      to get started.
+                    </p>
+                    <svg className="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <p className="accepted-formats">Accepted: .mp3, .m4v</p>
+                  </div>
+                  <input
+                    id="file-input"
+                    type="file"
+                    accept=".mp3,.m4v,audio/mpeg,video/mp4"
+                    onChange={handleFileInput}
+                    style={{ display: 'none' }}
+                  />
+                </div>
 
-            {/* SoundCloud Input */}
-            <div className="soundcloud-section">
-              <div className="soundcloud-divider">
-                <span className="divider-line"></span>
-                <span className="divider-text">or</span>
-                <span className="divider-line"></span>
-              </div>
-              <div className="soundcloud-input-wrapper">
-                <svg className="soundcloud-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z" />
-                </svg>
-                <input
-                  type="text"
-                  className="soundcloud-input"
-                  placeholder="Paste a SoundCloud song or playlist link..."
-                  value={soundcloudUrl}
-                  onChange={(e) => { setSoundcloudUrl(e.target.value); setSoundcloudError(''); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSoundCloudSubmit(); }}
-                />
-                <button className="soundcloud-submit" onClick={handleSoundCloudSubmit} disabled={!soundcloudUrl.trim()}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                    <polyline points="12 5 19 12 12 19" />
-                  </svg>
-                </button>
-              </div>
-              {soundcloudError && <p className="soundcloud-error">{soundcloudError}</p>}
-            </div>
+                {/* SoundCloud Input */}
+                <div className="soundcloud-section">
+                  <div className="soundcloud-divider">
+                    <span className="divider-line"></span>
+                    <span className="divider-text">or</span>
+                    <span className="divider-line"></span>
+                  </div>
+                  <div className="soundcloud-input-wrapper">
+                    <svg className="soundcloud-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z" />
+                    </svg>
+                    <input
+                      type="text"
+                      className="soundcloud-input"
+                      placeholder="Paste a SoundCloud song or playlist link..."
+                      value={soundcloudUrl}
+                      onChange={(e) => { setSoundcloudUrl(e.target.value); setSoundcloudError(''); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSoundCloudSubmit(); }}
+                    />
+                    <button className="soundcloud-submit" onClick={handleSoundCloudSubmit} disabled={!soundcloudUrl.trim()}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
+                      </svg>
+                    </button>
+                  </div>
+                  {soundcloudError && <p className="soundcloud-error">{soundcloudError}</p>}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Scroll indicator */}
@@ -945,6 +1114,7 @@ function App() {
         playbackSpeed={playbackSpeed}
         currentShape={currentShape}
         onPlayPause={handlePlayPause}
+        onSkip={handleSkip}
         onSeek={handleSeek}
         onSpeedChange={handleSpeedChange}
         onShapeChange={handleManualShapeChange}
@@ -955,11 +1125,6 @@ function App() {
         }}
         onReset={handleReset}
         nowPlaying={nowPlaying}
-        playlistQueue={playlistQueue}
-        playlistIndex={playlistIndex}
-        onNext={playNextInQueue}
-        onPrevious={playPreviousInQueue}
-        onPlaylistTrackSelect={playPlaylistTrack}
         anaglyphEnabled={anaglyphEnabled}
         onAnaglyphToggle={setAnaglyphEnabled}
         audioTuning={audioTuning}
