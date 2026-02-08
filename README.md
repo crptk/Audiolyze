@@ -9,7 +9,7 @@ This opens the door to a new kind of web-native music platform for creators, lis
 ---
 ## 🎥 Demo Video
 
-[![Audiolyze Demo](https://img.youtube.com/vi/VIDEO_ID/0.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
+[![Audiolyze Demo](https://img.youtube.com/vi/4uU_S30QZI8/0.jpg)](https://youtu.be/4uU_S30QZI8)
 
 ---
 
@@ -177,3 +177,4 @@ MIT License
 * Librosa for audio analysis
 * Three.js & react-three-fiber for rendering
 * SoundCloud & yt-dlp for audio ingestion
+
