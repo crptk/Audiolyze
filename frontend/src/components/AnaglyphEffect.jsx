@@ -10,7 +10,13 @@ export default function AnaglyphEffectComponent({ enabled }) {
   const effectRef = useRef(null);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      // Clean up effect when disabled
+      if (effectRef.current) {
+        effectRef.current = null;
+      }
+      return;
+    }
 
     // Create anaglyph effect
     const effect = new AnaglyphEffect(gl);
@@ -18,7 +24,10 @@ export default function AnaglyphEffectComponent({ enabled }) {
     effectRef.current = effect;
 
     return () => {
-      effectRef.current = null;
+      // Proper cleanup
+      if (effectRef.current) {
+        effectRef.current = null;
+      }
     };
   }, [gl, size, enabled]);
 
