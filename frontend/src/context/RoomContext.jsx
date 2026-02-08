@@ -16,13 +16,19 @@ const RoomContext = createContext(null);
 // Build WebSocket URL from the API base (convert http to ws)
 function getWsUrl() {
   const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
-  const wsBase = apiBase.replace(/^http/, 'ws');
-  return `${wsBase}/rooms/ws`;
+  return apiBase.replace(/^http/, 'ws') + '/rooms/ws';
+}
+
+// Build REST URL for public rooms
+function getRestUrl(path) {
+  const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+  return `${apiBase}${path}`;
 }
 
 export function RoomProvider({ children }) {
-  // User identity
+  // User identity (persisted across reconnects via ref)
   const [username, setUsernameState] = useState(() => generateGuestName());
+  const usernameRef = useRef(username);
   const [userId, setUserId] = useState(null);
 
   // Room state
@@ -34,32 +40,36 @@ export function RoomProvider({ children }) {
   // Members in current room
   const [members, setMembers] = useState([]);
 
-  // Public rooms list (from server)
+  // Public rooms list
   const [publicRooms, setPublicRooms] = useState([]);
 
   // Chat messages
   const [messages, setMessages] = useState([]);
 
-  // WebSocket ref
+  // Connection state
+  const [isConnected, setIsConnected] = useState(false);
+
+  // Refs for WebSocket management (stable across renders)
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
-  const isConnectedRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  // ------ WebSocket send helper ------
+  // Keep username ref in sync
+  useEffect(() => {
+    usernameRef.current = username;
+  }, [username]);
+
+  // ------ Stable send helper ------
   const wsSend = useCallback((data) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(data));
     }
   }, []);
 
-  // ------ Handle incoming messages ------
+  // ------ Handle incoming messages (uses functional state setters for stability) ------
   const handleMessage = useCallback((event) => {
     let data;
-    try {
-      data = JSON.parse(event.data);
-    } catch {
-      return;
-    }
+    try { data = JSON.parse(event.data); } catch { return; }
 
     switch (data.type) {
       case 'connected':
@@ -148,7 +158,7 @@ export function RoomProvider({ children }) {
     }
   }, []);
 
-  // ------ Connect WebSocket ------
+  // ------ Connect WebSocket (stable, no deps on changing state) ------
   const connect = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
 
@@ -156,36 +166,64 @@ export function RoomProvider({ children }) {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      isConnectedRef.current = true;
-      // Send our username immediately
-      ws.send(JSON.stringify({ type: 'set_username', name: username }));
+      if (!mountedRef.current) { ws.close(); return; }
+      setIsConnected(true);
+      // Send current username on connect/reconnect
+      ws.send(JSON.stringify({ type: 'set_username', name: usernameRef.current }));
     };
 
     ws.onmessage = handleMessage;
 
     ws.onclose = () => {
-      isConnectedRef.current = false;
-      // Auto-reconnect after 2s
+      setIsConnected(false);
+      if (!mountedRef.current) return;
+      // Auto-reconnect after 3s
       reconnectTimerRef.current = setTimeout(() => {
-        connect();
-      }, 2000);
+        if (mountedRef.current) connect();
+      }, 3000);
     };
 
     ws.onerror = () => {
       // Will trigger onclose
     };
-  }, [username, handleMessage]);
+  }, [handleMessage]);
 
-  // ------ Initialize connection ------
+  // ------ Initialize connection on mount ------
   useEffect(() => {
+    mountedRef.current = true;
     connect();
     return () => {
+      mountedRef.current = false;
       clearTimeout(reconnectTimerRef.current);
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      if (wsRef.current) wsRef.current.close();
     };
   }, [connect]);
+
+  // ------ Fetch public rooms via REST as fallback (for the landing page) ------
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPublicRooms = async () => {
+      try {
+        const res = await fetch(getRestUrl('/rooms/public'));
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setPublicRooms(data);
+        }
+      } catch {
+        // Backend may not be running, that's ok
+      }
+    };
+
+    // Fetch once on mount
+    fetchPublicRooms();
+
+    // Poll every 10s if WS isn't connected
+    const interval = setInterval(() => {
+      if (!isConnected) fetchPublicRooms();
+    }, 10000);
+
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [isConnected]);
 
   // ------ Actions ------
 
@@ -197,8 +235,8 @@ export function RoomProvider({ children }) {
   }, [wsSend]);
 
   const createRoom = useCallback((name) => {
-    wsSend({ type: 'create_room', name: name || `${username}'s Stage` });
-  }, [wsSend, username]);
+    wsSend({ type: 'create_room', name: name || `${usernameRef.current}'s Stage` });
+  }, [wsSend]);
 
   const joinRoom = useCallback((room) => {
     wsSend({ type: 'join_room', roomId: room.id });
@@ -229,34 +267,15 @@ export function RoomProvider({ children }) {
     wsSend({ type: 'chat_message', text: trimmed });
   }, [wsSend]);
 
-  // Audience list (exclude host for audience count)
+  // Audience list (exclude host)
   const audience = members.filter(m => !m.isHost);
 
   const value = {
-    // User
-    username,
-    userId,
-    setUsername,
-    // Room state
-    currentRoom,
-    isHost,
-    roomName,
-    isPublic,
-    members,
-    audience,
-    publicRooms,
-    // Chat
-    messages,
-    sendMessage,
-    // Actions
-    createRoom,
-    joinRoom,
-    leaveRoom,
-    togglePublic,
-    updateRoomName,
-    updateNowPlaying,
-    // Connection state
-    isConnected: isConnectedRef.current,
+    username, userId, setUsername,
+    currentRoom, isHost, roomName, isPublic, members, audience, publicRooms,
+    messages, sendMessage,
+    createRoom, joinRoom, leaveRoom, togglePublic, updateRoomName, updateNowPlaying,
+    isConnected,
   };
 
   return <RoomContext.Provider value={value}>{children}</RoomContext.Provider>;
@@ -264,9 +283,7 @@ export function RoomProvider({ children }) {
 
 export function useRoom() {
   const context = useContext(RoomContext);
-  if (!context) {
-    throw new Error('useRoom must be used within a RoomProvider');
-  }
+  if (!context) throw new Error('useRoom must be used within a RoomProvider');
   return context;
 }
 

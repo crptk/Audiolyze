@@ -37,25 +37,25 @@ export default function RoomChat({ visible }) {
   };
 
   const formatTime = (timestamp) => {
-    const date = new Date(timestamp * 1000); // backend sends seconds
+    const date = new Date(timestamp * 1000);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
     <>
-      {/* Toggle button - now more visible with a label */}
+      {/* Toggle button - prominent pill shape with visible label */}
       <button
-        className={`chat-toggle ${isOpen ? 'open' : ''}`}
+        className={`chat-toggle-pill ${isOpen ? 'open' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
         title="Toggle Chat"
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
-        <span className="chat-toggle-label">Chat</span>
+        <span>Chat</span>
         {hasUnread && <span className="chat-unread-dot"></span>}
         {messages.length > 0 && !isOpen && (
-          <span className="chat-toggle-count">{messages.length}</span>
+          <span className="chat-msg-count">{messages.length}</span>
         )}
       </button>
 

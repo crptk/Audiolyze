@@ -3,36 +3,72 @@ import { useRoom } from '../context/RoomContext';
 import '../styles/room-header.css';
 
 export default function RoomHeader({ visible }) {
-  const { currentRoom, isHost, isPublic, roomName, togglePublic, updateRoomName, leaveRoom, audience, username } = useRoom();
-  const [isEditing, setIsEditing] = useState(false);
+  const {
+    currentRoom, isHost, isPublic, roomName, togglePublic,
+    updateRoomName, leaveRoom, audience, username, setUsername,
+  } = useRoom();
+
+  // Room name editing
+  const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState('');
-  const inputRef = useRef(null);
+  const nameInputRef = useRef(null);
+
+  // Username editing
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [editUsername, setEditUsername] = useState('');
+  const usernameInputRef = useRef(null);
 
   useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+    if (isEditingName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
     }
-  }, [isEditing]);
+  }, [isEditingName]);
+
+  useEffect(() => {
+    if (isEditingUsername && usernameInputRef.current) {
+      usernameInputRef.current.focus();
+      usernameInputRef.current.select();
+    }
+  }, [isEditingUsername]);
 
   if (!visible || !currentRoom) return null;
 
-  const handleStartEdit = () => {
-    if (!isHost || !isPublic) return;
+  // ---- Room name ----
+  const handleStartEditName = () => {
+    if (!isHost) return;
     setEditName(roomName);
-    setIsEditing(true);
+    setIsEditingName(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEditName = () => {
     if (editName.trim()) {
       updateRoomName(editName.trim());
     }
-    setIsEditing(false);
+    setIsEditingName(false);
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') handleSaveEdit();
-    if (e.key === 'Escape') setIsEditing(false);
+  const handleNameKeyDown = (e) => {
+    if (e.key === 'Enter') handleSaveEditName();
+    if (e.key === 'Escape') setIsEditingName(false);
+  };
+
+  // ---- Username ----
+  const handleStartEditUsername = () => {
+    setEditUsername(username);
+    setIsEditingUsername(true);
+  };
+
+  const handleSaveEditUsername = () => {
+    if (editUsername.trim()) {
+      setUsername(editUsername.trim());
+    }
+    setIsEditingUsername(false);
+  };
+
+  const handleUsernameKeyDown = (e) => {
+    if (e.key === 'Enter') handleSaveEditUsername();
+    if (e.key === 'Escape') setIsEditingUsername(false);
   };
 
   return (
@@ -53,25 +89,25 @@ export default function RoomHeader({ visible }) {
           <span>{isHost ? 'Host' : 'Audience'}</span>
         </div>
 
-        {/* Room name */}
-        {isEditing ? (
+        {/* Room name (host can always edit) */}
+        {isEditingName ? (
           <input
-            ref={inputRef}
+            ref={nameInputRef}
             className="room-name-input"
             value={editName}
             onChange={(e) => setEditName(e.target.value)}
-            onBlur={handleSaveEdit}
-            onKeyDown={handleKeyDown}
+            onBlur={handleSaveEditName}
+            onKeyDown={handleNameKeyDown}
             maxLength={40}
           />
         ) : (
           <button
-            className={`room-name-display ${isHost && isPublic ? 'editable' : ''}`}
-            onClick={handleStartEdit}
-            disabled={!isHost || !isPublic}
+            className={`room-name-display ${isHost ? 'editable' : ''}`}
+            onClick={handleStartEditName}
+            disabled={!isHost}
           >
             {roomName}
-            {isHost && isPublic && (
+            {isHost && (
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
               </svg>
@@ -94,10 +130,30 @@ export default function RoomHeader({ visible }) {
           </div>
         )}
 
-        {/* Guest name */}
-        <div className="room-username">
-          {username}
-        </div>
+        {/* Editable username */}
+        {isEditingUsername ? (
+          <input
+            ref={usernameInputRef}
+            className="room-username-input"
+            value={editUsername}
+            onChange={(e) => setEditUsername(e.target.value)}
+            onBlur={handleSaveEditUsername}
+            onKeyDown={handleUsernameKeyDown}
+            maxLength={30}
+            placeholder="Your name..."
+          />
+        ) : (
+          <button
+            className="room-username editable"
+            onClick={handleStartEditUsername}
+            title="Click to change your name"
+          >
+            {username}
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+            </svg>
+          </button>
+        )}
 
         {/* Public/Private toggle (host only) */}
         {isHost && (

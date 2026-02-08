@@ -7,7 +7,6 @@ from api.generate_params import router as params_router
 from api.audience_score import router as score_router
 from api.soundcloud import router as soundcloud_router
 from api.rooms import router as rooms_router
-from fastapi.middleware.cors import CORSMiddleware
 
 logging.basicConfig(
     level=logging.INFO,

@@ -124,15 +124,59 @@
   color: rgba(255, 255, 255, 0.45);
 }
 
-/* Username */
+/* Username (clickable to edit) */
 .room-username {
   font-size: 0.75rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.5);
   padding: 4px 8px;
   background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
   border-radius: 6px;
   white-space: nowrap;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s ease;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.room-username.editable {
+  cursor: pointer;
+}
+
+.room-username.editable:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.room-username svg {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.room-username.editable:hover svg {
+  opacity: 0.4;
+}
+
+.room-username-input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(200, 255, 122, 0.3);
+  border-radius: 6px;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  outline: none;
+  width: 120px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.room-username-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
 }
 
 /* Visibility toggle */
