@@ -1,0 +1,219 @@
+/* Room Header */
+.room-header {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 105;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  max-width: 90vw;
+  animation: roomHeaderSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@keyframes roomHeaderSlideIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.room-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.room-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Role badge */
+.room-role-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.room-role-badge.host {
+  background: rgba(200, 255, 122, 0.15);
+  color: rgba(200, 255, 122, 0.95);
+  border: 1px solid rgba(200, 255, 122, 0.2);
+}
+
+.room-role-badge.audience {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Room name */
+.room-name-display {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-name-display.editable {
+  cursor: pointer;
+}
+
+.room-name-display.editable:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+}
+
+.room-name-display svg {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.room-name-display.editable:hover svg {
+  opacity: 0.5;
+}
+
+.room-name-input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(200, 255, 122, 0.3);
+  border-radius: 6px;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  outline: none;
+  width: 180px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Audience count */
+.room-audience-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* Username */
+.room-username {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* Visibility toggle */
+.room-visibility-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.room-visibility-toggle.private {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.room-visibility-toggle.private:hover {
+  background: rgba(200, 255, 122, 0.08);
+  border-color: rgba(200, 255, 122, 0.2);
+  color: rgba(200, 255, 122, 0.8);
+}
+
+.room-visibility-toggle.public {
+  background: rgba(200, 255, 122, 0.12);
+  border-color: rgba(200, 255, 122, 0.25);
+  color: rgba(200, 255, 122, 0.9);
+}
+
+.room-visibility-toggle.public:hover {
+  background: rgba(200, 255, 122, 0.18);
+  border-color: rgba(200, 255, 122, 0.35);
+}
+
+/* Leave button */
+.room-leave-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background: rgba(255, 80, 80, 0.1);
+  border: 1px solid rgba(255, 80, 80, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 120, 120, 0.9);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.room-leave-btn:hover {
+  background: rgba(255, 80, 80, 0.18);
+  border-color: rgba(255, 80, 80, 0.35);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .room-header {
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    top: 12px;
+    width: calc(100% - 120px);
+  }
+
+  .room-header-left,
+  .room-header-right {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .room-name-display {
+    max-width: 140px;
+  }
+}

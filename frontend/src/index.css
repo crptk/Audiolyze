@@ -4,7 +4,13 @@ html, body, #root {
   height: 100%;
   background: black;
   overflow: hidden;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
 .app-root {
@@ -44,31 +50,6 @@ html, body, #root {
   animation: fadeIn 1.5s ease;
 }
 
-.title {
-  font-size: 64px;
-  letter-spacing: -0.02em;
-  margin-bottom: 8px;
-}
-
-.subtitle {
-  opacity: 0.7;
-  margin-bottom: 40px;
-}
-
-/* ===== Upload Box ===== */
-.upload-box {
-  padding: 18px 36px;
-  border: 1px dashed rgba(255,255,255,0.4);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.upload-box:hover {
-  border-color: white;
-  background: rgba(255,255,255,0.05);
-}
-
 /* ===== Processing Overlay ===== */
 .processing-overlay {
   position: absolute;
@@ -82,31 +63,13 @@ html, body, #root {
   letter-spacing: 0.05em;
 }
 
-/* ===== Light Leak Edges ===== */
-.light-leak {
-  position: absolute;
-  inset: -40%;
-  pointer-events: none;
-  mix-blend-mode: screen;
-  animation: leakMove 18s linear infinite;
-}
-
-.leak-1 {
-  background: radial-gradient(circle at 30% 30%, #38bdf8, transparent 60%);
-}
-
-.leak-2 {
-  background: radial-gradient(circle at 70% 70%, #a855f7, transparent 60%);
-  animation-duration: 25s;
-}
-
-@keyframes leakMove {
-  0% { transform: translate(0, 0); }
-  50% { transform: translate(10%, -10%); }
-  100% { transform: translate(0, 0); }
-}
-
 @keyframes fadeIn {
   from { opacity: 0 }
   to { opacity: 1 }
+}
+
+/* Selection color */
+::selection {
+  background: rgba(200, 255, 122, 0.3);
+  color: white;
 }
