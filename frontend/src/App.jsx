@@ -65,8 +65,8 @@ function App() {
   const { createRoom, updateNowPlaying, currentRoom, isHost, leaveRoom, publicRooms, joinRoom, 
     broadcastHostAction, onHostAction, setAudioSource, sendSyncState, uploadAudioFile,
     audienceAudioSource, audienceAiParams, audienceSync,
-    initialVisualizerState, hostedRoom, isVisiting, returnToHostedRoom, endHostedRoom,
-    userId } = useRoom();
+    initialVisualizerState, hostedRoom, isVisiting, isOnMenu, goToMenu, returnToHostedRoom, endHostedRoom,
+    hostReturnData, clearHostReturnData, userId } = useRoom();
   
   const isAudience = !!currentRoom && !isHost;
   
@@ -485,17 +485,35 @@ function App() {
 
   const handleBackToMenu = () => {
     resetAudioState();
-    // Leave room
-    leaveRoom();
+    // If host, don't destroy the room - go to menu with room alive
+    if (isHost && currentRoom) {
+      goToMenu();
+    } else if (isVisiting && hostedRoom) {
+      // Host visiting another room, go to menu (room stays alive)
+      goToMenu();
+    } else {
+      // Non-host audience member, or no room - just leave
+      leaveRoom();
+    }
   };
 
-  // Handle returning to hosted room from visiting another room
+  // Handle returning to hosted room from visiting another room or menu
   const handleReturnToHostedRoom = useCallback(() => {
-    resetAudioState();
+    // Clean up current audio chain
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (audioContextRef.current) { try { audioContextRef.current.close(); } catch {} audioContextRef.current = null; }
+    audioFiltersRef.current = null;
+    setAnalyser(null);
+    setAiParams(null);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setCurrentShape(null);
+    audienceLoadedSourceRef.current = null;
+    // Tell the server to return us to our hosted room
     returnToHostedRoom();
-    // The returned_to_room message will restore us to the host view
-    // We need to reload our own audio - this will be handled by the room state update
-  }, [resetAudioState, returnToHostedRoom]);
+    // returned_to_room response will set hostReturnData which triggers audio reload below
+  }, [returnToHostedRoom]);
 
   // Handle ending hosted room while visiting
   const handleEndHostedRoom = useCallback(() => {
@@ -582,6 +600,85 @@ function App() {
     }, 2000);
     return () => clearInterval(syncInterval);
   }, [isHost, currentRoom, isPlaying, sendSyncState]);
+
+  // HOST RETURN: reload audio when returning to hosted room
+  useEffect(() => {
+    if (!hostReturnData || !isHost) return;
+    const { audioSource, aiParams: returnAiParams, lastSync, hostVisualizerState } = hostReturnData;
+    clearHostReturnData();
+    
+    if (!audioSource) return;
+
+    const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+    let audioUrl = audioSource.url;
+    if (audioUrl && audioUrl.startsWith('/')) {
+      audioUrl = apiBase + audioUrl;
+    }
+
+    // Build audio chain
+    const audio = new Audio();
+    audio.crossOrigin = "anonymous";
+    audio.src = audioUrl;
+    audioRef.current = audio;
+
+    audio.addEventListener('loadedmetadata', () => { setDuration(audio.duration); });
+    audio.addEventListener('timeupdate', () => { setCurrentTime(audio.currentTime); });
+    audio.addEventListener('ended', () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      if (isPlayingFromQueueRef.current) playNextInQueue();
+    });
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const analyserNode = audioContext.createAnalyser();
+    analyserNode.fftSize = 2048;
+
+    const bassFilter = audioContext.createBiquadFilter();
+    bassFilter.type = 'lowshelf'; bassFilter.frequency.value = 200; bassFilter.gain.value = 0;
+    const midFilter = audioContext.createBiquadFilter();
+    midFilter.type = 'peaking'; midFilter.frequency.value = 1500; midFilter.Q.value = 1.0; midFilter.gain.value = 0;
+    const trebleFilter = audioContext.createBiquadFilter();
+    trebleFilter.type = 'highshelf'; trebleFilter.frequency.value = 4000; trebleFilter.gain.value = 0;
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = 1.0;
+
+    const source = audioContext.createMediaElementSource(audio);
+    source.connect(bassFilter);
+    bassFilter.connect(midFilter);
+    midFilter.connect(trebleFilter);
+    trebleFilter.connect(gainNode);
+    gainNode.connect(analyserNode);
+    analyserNode.connect(audioContext.destination);
+
+    audioContextRef.current = audioContext;
+    audioFiltersRef.current = { bassFilter, midFilter, trebleFilter, gainNode };
+    setAnalyser(analyserNode);
+
+    if (returnAiParams) setAiParams(returnAiParams);
+    setNowPlaying({ title: audioSource.title || 'Unknown', source: audioSource.type || 'stream' });
+    setAudioLoaded(true);
+
+    // Apply visualizer state
+    if (hostVisualizerState) {
+      if (hostVisualizerState.shape) setCurrentShape(hostVisualizerState.shape);
+      if (hostVisualizerState.environment) setCurrentEnvironment(hostVisualizerState.environment);
+      if (hostVisualizerState.audioTuning) setAudioTuning(hostVisualizerState.audioTuning);
+      if (hostVisualizerState.audioPlaybackTuning) setAudioPlaybackTuning(hostVisualizerState.audioPlaybackTuning);
+      if (hostVisualizerState.anaglyphEnabled !== undefined) setAnaglyphEnabled(hostVisualizerState.anaglyphEnabled);
+    }
+
+    // Resume from last sync position
+    if (lastSync) {
+      audio.currentTime = lastSync.currentTime || 0;
+      audio.playbackRate = lastSync.playbackSpeed || 1;
+      setPlaybackSpeed(lastSync.playbackSpeed || 1);
+      setCurrentTime(lastSync.currentTime || 0);
+      if (lastSync.isPlaying) {
+        audio.play().catch(e => console.warn('Host auto-play on return failed:', e));
+        setIsPlaying(true);
+      }
+    }
+  }, [hostReturnData, isHost, clearHostReturnData]);
 
   // Keep a ref to audienceSync so the audio loading effect can read it without re-running
   const audienceSyncRef = useRef(audienceSync);
@@ -757,9 +854,9 @@ function App() {
       {/* Room Chat (shows when in a room) */}
       <RoomChat visible={audioLoaded && currentRoom !== null} />
 
-      {/* Host Miniplayer (shows when host is visiting another room) */}
+      {/* Host Miniplayer (shows when host is visiting another room OR on main menu) */}
       <HostMiniplayer
-        visible={isVisiting && !!hostedRoom}
+        visible={!!hostedRoom && (isVisiting || isOnMenu)}
         hostedRoom={hostedRoom}
         onReturn={handleReturnToHostedRoom}
         onEnd={handleEndHostedRoom}
@@ -814,63 +911,96 @@ function App() {
             <h1 className="title">Audiolyze</h1>
             <p className="tagline">Your music, on stage.</p>
 
-            <div
-              className={`upload-box ${isDragging ? 'dragging' : ''}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => document.getElementById('file-input').click()}
-            >
-              <div className="upload-content">
-                <p className="upload-text">
-                  Import or Drag & Drop Music
-                  <br />
-                  to get started.
-                </p>
-                <svg className="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                <p className="accepted-formats">Accepted: .mp3, .m4v</p>
+            {hostedRoom ? (
+              /* Host has an active room - show return banner instead of upload */
+              <div className="hosting-banner" onClick={handleReturnToHostedRoom}>
+                <div className="hosting-banner-content">
+                  <div className="hosting-banner-pulse-wrapper">
+                    <span className="hosting-banner-pulse"></span>
+                  </div>
+                  <div className="hosting-banner-text">
+                    <p className="hosting-banner-title">You're hosting a stage!</p>
+                    <p className="hosting-banner-sub">
+                      {hostedRoom.nowPlaying ? (
+                        <>Playing: <span className="hosting-banner-track">{hostedRoom.nowPlaying.title}</span></>
+                      ) : (
+                        'Your stage is live'
+                      )}
+                      {(hostedRoom.audienceCount > 0) && (
+                        <> &middot; {hostedRoom.audienceCount} listening</>
+                      )}
+                    </p>
+                  </div>
+                  <div className="hosting-banner-action">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                    <span>Return to your stage</span>
+                  </div>
+                </div>
               </div>
-              <input
-                id="file-input"
-                type="file"
-                accept=".mp3,.m4v,audio/mpeg,video/mp4"
-                onChange={handleFileInput}
-                style={{ display: 'none' }}
-              />
-            </div>
+            ) : (
+              /* Normal upload flow */
+              <>
+                <div
+                  className={`upload-box ${isDragging ? 'dragging' : ''}`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => document.getElementById('file-input').click()}
+                >
+                  <div className="upload-content">
+                    <p className="upload-text">
+                      Import or Drag & Drop Music
+                      <br />
+                      to get started.
+                    </p>
+                    <svg className="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <p className="accepted-formats">Accepted: .mp3, .m4v</p>
+                  </div>
+                  <input
+                    id="file-input"
+                    type="file"
+                    accept=".mp3,.m4v,audio/mpeg,video/mp4"
+                    onChange={handleFileInput}
+                    style={{ display: 'none' }}
+                  />
+                </div>
 
-            {/* SoundCloud Input */}
-            <div className="soundcloud-section">
-              <div className="soundcloud-divider">
-                <span className="divider-line"></span>
-                <span className="divider-text">or</span>
-                <span className="divider-line"></span>
-              </div>
-              <div className="soundcloud-input-wrapper">
-                <svg className="soundcloud-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z" />
-                </svg>
-                <input
-                  type="text"
-                  className="soundcloud-input"
-                  placeholder="Paste a SoundCloud song or playlist link..."
-                  value={soundcloudUrl}
-                  onChange={(e) => { setSoundcloudUrl(e.target.value); setSoundcloudError(''); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSoundCloudSubmit(); }}
-                />
-                <button className="soundcloud-submit" onClick={handleSoundCloudSubmit} disabled={!soundcloudUrl.trim()}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                    <polyline points="12 5 19 12 12 19" />
-                  </svg>
-                </button>
-              </div>
-              {soundcloudError && <p className="soundcloud-error">{soundcloudError}</p>}
-            </div>
+                {/* SoundCloud Input */}
+                <div className="soundcloud-section">
+                  <div className="soundcloud-divider">
+                    <span className="divider-line"></span>
+                    <span className="divider-text">or</span>
+                    <span className="divider-line"></span>
+                  </div>
+                  <div className="soundcloud-input-wrapper">
+                    <svg className="soundcloud-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z" />
+                    </svg>
+                    <input
+                      type="text"
+                      className="soundcloud-input"
+                      placeholder="Paste a SoundCloud song or playlist link..."
+                      value={soundcloudUrl}
+                      onChange={(e) => { setSoundcloudUrl(e.target.value); setSoundcloudError(''); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSoundCloudSubmit(); }}
+                    />
+                    <button className="soundcloud-submit" onClick={handleSoundCloudSubmit} disabled={!soundcloudUrl.trim()}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
+                      </svg>
+                    </button>
+                  </div>
+                  {soundcloudError && <p className="soundcloud-error">{soundcloudError}</p>}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Scroll indicator */}

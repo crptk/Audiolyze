@@ -684,6 +684,95 @@
   padding-left: 4px;
 }
 
+/* ========== HOSTING BANNER (shown on landing when host has active room) ========== */
+.hosting-banner {
+  width: 100%;
+  padding: 1.5rem;
+  background: rgba(200, 255, 122, 0.06);
+  border: 1px solid rgba(200, 255, 122, 0.2);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.hosting-banner:hover {
+  background: rgba(200, 255, 122, 0.1);
+  border-color: rgba(200, 255, 122, 0.35);
+  box-shadow: 0 0 30px rgba(200, 255, 122, 0.08);
+  transform: translateY(-2px);
+}
+
+.hosting-banner-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.hosting-banner-pulse-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hosting-banner-pulse {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(200, 255, 122, 0.9);
+  animation: hostingPulse 2s ease-in-out infinite;
+}
+
+@keyframes hostingPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(200, 255, 122, 0.4); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 10px rgba(200, 255, 122, 0); }
+}
+
+.hosting-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hosting-banner-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: rgba(200, 255, 122, 0.95);
+  margin: 0;
+}
+
+.hosting-banner-sub {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+.hosting-banner-track {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+
+.hosting-banner-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: rgba(200, 255, 122, 0.12);
+  border: 1px solid rgba(200, 255, 122, 0.25);
+  border-radius: 10px;
+  color: rgba(200, 255, 122, 0.95);
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.hosting-banner:hover .hosting-banner-action {
+  background: rgba(200, 255, 122, 0.2);
+  border-color: rgba(200, 255, 122, 0.4);
+}
+
 /* ========== RESPONSIVE ========== */
 @media (max-width: 768px) {
   .title {

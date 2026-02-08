@@ -1,19 +1,59 @@
-/* Host Miniplayer - shown when host visits another room */
+/* Host Miniplayer - draggable overlay when host visits another room or is on menu */
 .host-miniplayer {
   position: fixed;
   bottom: 100px;
   left: 50%;
-  transform: translateX(-50%);
   z-index: 130;
   width: 380px;
   max-width: calc(100vw - 32px);
   animation: miniplayerSlideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  touch-action: none;
+  user-select: none;
+  transition: box-shadow 0.2s ease;
+}
+
+.host-miniplayer.dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.host-miniplayer.dragging .host-miniplayer-bar {
+  cursor: grabbing;
 }
 
 @keyframes miniplayerSlideUp {
-  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Drag handle */
+.miniplayer-drag-handle {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 2px;
+  cursor: grab;
+}
+
+.drag-handle-dots {
+  display: flex;
+  gap: 3px;
+}
+
+.drag-handle-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transition: background 0.2s ease;
+}
+
+.host-miniplayer:hover .drag-handle-dots span {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.host-miniplayer.dragging .drag-handle-dots span {
+  background: rgba(200, 255, 122, 0.5);
 }
 
 /* Collapsed bar */
@@ -27,7 +67,7 @@
   backdrop-filter: blur(20px);
   border: 1px solid rgba(200, 255, 122, 0.2);
   border-radius: 14px;
-  cursor: pointer;
+  cursor: grab;
   transition: all 0.25s ease;
   color: white;
   font-family: inherit;

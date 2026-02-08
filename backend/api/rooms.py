@@ -71,6 +71,31 @@ class ChatMessage:
 
 
 @dataclass
+class QueueItem:
+    id: str
+    title: str
+    source: str  # "file" | "soundcloud"
+    url: str  # download URL or upload URL
+    added_by: str  # user_id
+    added_by_name: str
+    status: str = "pending"  # pending | analyzing | ready | playing | played
+    ai_params: dict | None = None
+    soundcloud_url: str | None = None  # original SoundCloud URL for re-downloading
+
+
+@dataclass
+class Suggestion:
+    id: str
+    title: str
+    source: str  # "file" | "soundcloud"
+    url: str
+    user_id: str
+    username: str
+    status: str = "pending"  # pending | approved | rejected
+    timestamp: float = field(default_factory=time.time)
+
+
+@dataclass
 class Room:
     id: str
     name: str
@@ -91,6 +116,10 @@ class Room:
     host_visualizer_state: dict | None = None  # {shape, environment, audioTuning, ...}
     # Whether host is currently visiting another room
     host_visiting: bool = False
+    # Song queue
+    queue: list[QueueItem] = field(default_factory=list)
+    # Audience suggestions
+    suggestions: list[Suggestion] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +155,8 @@ def _room_full(room: Room) -> dict:
     summary["aiParams"] = room.ai_params
     summary["lastSync"] = room.last_sync
     summary["hostVisualizerState"] = room.host_visualizer_state
+    summary["queue"] = [_queue_item_dict(item) for item in room.queue]
+    summary["suggestions"] = [_suggestion_dict(s) for s in room.suggestions if s.status == "pending"]
     return summary
 
 
@@ -195,6 +226,49 @@ def _hosted_room_summary(room: Room) -> dict:
         "audienceCount": max(0, len(room.members) - (0 if room.host_visiting else 1)),
         "isPublic": room.is_public,
     }
+
+
+def _queue_item_dict(item: QueueItem) -> dict:
+    return {
+        "id": item.id,
+        "title": item.title,
+        "source": item.source,
+        "url": item.url,
+        "addedBy": item.added_by,
+        "addedByName": item.added_by_name,
+        "status": item.status,
+        "aiParams": item.ai_params,
+        "soundcloudUrl": item.soundcloud_url,
+    }
+
+
+def _suggestion_dict(s: Suggestion) -> dict:
+    return {
+        "id": s.id,
+        "title": s.title,
+        "source": s.source,
+        "url": s.url,
+        "userId": s.user_id,
+        "username": s.username,
+        "status": s.status,
+        "timestamp": s.timestamp,
+    }
+
+
+def _queue_state(room: Room) -> dict:
+    """Full queue state for broadcasting."""
+    return {
+        "queue": [_queue_item_dict(item) for item in room.queue],
+        "suggestions": [_suggestion_dict(s) for s in room.suggestions if s.status == "pending"],
+    }
+
+
+async def _broadcast_queue(room: Room):
+    """Broadcast queue state to all members of a room."""
+    await _broadcast(room, {
+        "type": "queue_update",
+        **_queue_state(room),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -406,7 +480,7 @@ async def room_websocket(ws: WebSocket):
 
                 hosted = rooms[user.hosted_room_id]
 
-                # Leave the currently visited room
+                # Leave the currently visited room (if visiting another room)
                 if user.room_id and user.room_id != user.hosted_room_id and user.room_id in rooms:
                     await _leave_visited_room(user)
 
@@ -421,6 +495,7 @@ async def room_websocket(ws: WebSocket):
                     "room": _room_full(hosted),
                     "members": _member_list(hosted),
                     "messages": [_chat_msg_dict(m) for m in hosted.messages[-50:]],
+                    "needsAudioReload": True,
                 })
 
                 await _broadcast_public_rooms()
@@ -431,6 +506,41 @@ async def room_websocket(ws: WebSocket):
                     continue
                 await _destroy_hosted_room(user)
                 await _send(ws, {"type": "hosted_room_ended"})
+
+            # ------ GO TO MENU (host leaves visualizer but keeps room alive) ------
+            elif msg_type == "go_to_menu":
+                if user.hosted_room_id and user.hosted_room_id in rooms:
+                    hosted = rooms[user.hosted_room_id]
+                    hosted.host_visiting = True
+                    # Remove host from their own room's members (they're on the menu)
+                    hosted.members.pop(user_id, None)
+                    user.room_id = None
+                    user.is_host = False
+                    await _send(ws, {
+                        "type": "went_to_menu",
+                        "hostedRoom": _hosted_room_summary(hosted),
+                    })
+                    await _broadcast_public_rooms()
+                elif user.room_id and user.hosted_room_id and user.room_id != user.hosted_room_id:
+                    # Host is visiting another room, wants to go to menu
+                    if user.room_id in rooms:
+                        await _leave_visited_room(user)
+                    # Don't rejoin hosted room, just mark as on menu
+                    hosted = rooms.get(user.hosted_room_id)
+                    if hosted:
+                        hosted.host_visiting = True
+                        hosted.members.pop(user_id, None)
+                    user.room_id = None
+                    user.is_host = False
+                    await _send(ws, {
+                        "type": "went_to_menu",
+                        "hostedRoom": _hosted_room_summary(hosted) if hosted else None,
+                    })
+                    await _broadcast_public_rooms()
+                else:
+                    # Not a host, just leave normally
+                    await _leave_room(user)
+                    await _send(ws, {"type": "left_room"})
 
             # ------ LEAVE ROOM ------
             elif msg_type == "leave_room":
@@ -627,6 +737,184 @@ async def room_websocket(ws: WebSocket):
                     "message": _chat_msg_dict(msg),
                 })
 
+            # ------ QUEUE: ADD SONG (host only) ------
+            elif msg_type == "queue_add":
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
+                    continue
+                room = rooms[rid]
+                if room.host_id != user_id:
+                    continue
+                item = QueueItem(
+                    id=str(uuid.uuid4())[:12],
+                    title=raw.get("title", "Unknown")[:200],
+                    source=raw.get("source", "file"),
+                    url=raw.get("url", ""),
+                    added_by=user_id,
+                    added_by_name=user.name,
+                    soundcloud_url=raw.get("soundcloudUrl"),
+                )
+                room.queue.append(item)
+                await _broadcast_queue(room)
+
+            # ------ QUEUE: REMOVE SONG (host only) ------
+            elif msg_type == "queue_remove":
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
+                    continue
+                room = rooms[rid]
+                if room.host_id != user_id:
+                    continue
+                item_id = raw.get("itemId")
+                # Can only remove items that aren't currently playing
+                room.queue = [q for q in room.queue if not (q.id == item_id and q.status != "playing")]
+                await _broadcast_queue(room)
+
+            # ------ QUEUE: REORDER (host only, low-priority items only) ------
+            elif msg_type == "queue_reorder":
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
+                    continue
+                room = rooms[rid]
+                if room.host_id != user_id:
+                    continue
+                new_order = raw.get("order", [])  # list of item IDs in desired order
+                if not new_order:
+                    continue
+                # Separate priority (first 3 non-played) and low-priority
+                active_queue = [q for q in room.queue if q.status not in ("played",)]
+                played = [q for q in room.queue if q.status == "played"]
+                priority = active_queue[:3]
+                low_priority = active_queue[3:]
+                # Reorder only low-priority based on new_order
+                id_to_item = {q.id: q for q in low_priority}
+                reordered = []
+                for item_id in new_order:
+                    if item_id in id_to_item:
+                        reordered.append(id_to_item.pop(item_id))
+                # Add any items not in new_order at the end
+                reordered.extend(id_to_item.values())
+                room.queue = played + priority + reordered
+                await _broadcast_queue(room)
+
+            # ------ QUEUE: UPDATE ITEM STATUS (host only, e.g. mark as analyzing/ready) ------
+            elif msg_type == "queue_update_item":
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
+                    continue
+                room = rooms[rid]
+                if room.host_id != user_id:
+                    continue
+                item_id = raw.get("itemId")
+                new_status = raw.get("status")
+                ai_params = raw.get("aiParams")
+                for q in room.queue:
+                    if q.id == item_id:
+                        if new_status:
+                            q.status = new_status
+                        if ai_params is not None:
+                            q.ai_params = ai_params
+                        break
+                await _broadcast_queue(room)
+
+            # ------ QUEUE: ADVANCE (host signals song finished, move to next) ------
+            elif msg_type == "queue_advance":
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
+                    continue
+                room = rooms[rid]
+                if room.host_id != user_id:
+                    continue
+                # Mark current playing as played
+                for q in room.queue:
+                    if q.status == "playing":
+                        q.status = "played"
+                        break
+                # Find next ready/pending item and mark as playing
+                next_item = None
+                for q in room.queue:
+                    if q.status in ("ready", "pending"):
+                        q.status = "playing"
+                        next_item = q
+                        break
+                if next_item:
+                    await _broadcast(room, {
+                        "type": "queue_play_next",
+                        "item": _queue_item_dict(next_item),
+                    })
+                await _broadcast_queue(room)
+
+            # ------ SUGGEST SONG (audience) ------
+            elif msg_type == "suggest_song":
+                if not user.room_id or user.room_id not in rooms:
+                    continue
+                room = rooms[user.room_id]
+                # Only audience can suggest
+                if room.host_id == user_id:
+                    continue
+                # Check if user already has a pending suggestion
+                has_pending = any(s.user_id == user_id and s.status == "pending" for s in room.suggestions)
+                if has_pending:
+                    await _send(ws, {"type": "error", "message": "You already have a pending suggestion"})
+                    continue
+                suggestion = Suggestion(
+                    id=str(uuid.uuid4())[:12],
+                    title=raw.get("title", "Unknown")[:200],
+                    source=raw.get("source", "file"),
+                    url=raw.get("url", ""),
+                    user_id=user_id,
+                    username=user.name,
+                )
+                room.suggestions.append(suggestion)
+                # Notify host
+                host_user = room.members.get(room.host_id)
+                if host_user:
+                    await _send(host_user.ws, {
+                        "type": "new_suggestion",
+                        "suggestion": _suggestion_dict(suggestion),
+                    })
+                # Confirm to suggester
+                await _send(ws, {
+                    "type": "suggestion_sent",
+                    "suggestion": _suggestion_dict(suggestion),
+                })
+
+            # ------ RESPOND TO SUGGESTION (host only) ------
+            elif msg_type == "respond_suggestion":
+                rid = user.hosted_room_id or user.room_id
+                if not rid or rid not in rooms:
+                    continue
+                room = rooms[rid]
+                if room.host_id != user_id:
+                    continue
+                suggestion_id = raw.get("suggestionId")
+                action = raw.get("action")  # "approve" or "reject"
+                for s in room.suggestions:
+                    if s.id == suggestion_id and s.status == "pending":
+                        s.status = "approved" if action == "approve" else "rejected"
+                        # If approved, add to queue
+                        if action == "approve":
+                            item = QueueItem(
+                                id=str(uuid.uuid4())[:12],
+                                title=s.title,
+                                source=s.source,
+                                url=s.url,
+                                added_by=s.user_id,
+                                added_by_name=s.username,
+                                soundcloud_url=s.url if s.source == "soundcloud" else None,
+                            )
+                            room.queue.append(item)
+                        # Notify the suggester
+                        suggester = room.members.get(s.user_id)
+                        if suggester:
+                            await _send(suggester.ws, {
+                                "type": "suggestion_response",
+                                "suggestionId": s.id,
+                                "action": action,
+                            })
+                        break
+                await _broadcast_queue(room)
+
     except WebSocketDisconnect:
         logger.info(f"User {user_id} ({user.name}) disconnected")
     except Exception as e:
@@ -637,10 +925,9 @@ async def room_websocket(ws: WebSocket):
             if user.room_id in rooms:
                 await _leave_visited_room(user)
         if user.hosted_room_id and user.hosted_room_id in rooms:
-            user.room_id = user.hosted_room_id
-            user.is_host = True
-            await _leave_room(user)
-        elif user.room_id:
+            # Destroy the hosted room (browser closed = room ends)
+            await _destroy_hosted_room(user)
+        if user.room_id and user.room_id in rooms:
             await _leave_room(user)
         users.pop(user_id, None)
 

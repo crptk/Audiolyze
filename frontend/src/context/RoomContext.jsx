@@ -39,9 +39,13 @@ export function RoomProvider({ children }) {
   const [messages, setMessages] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
 
-  // ---- Hosted room state (persists when host visits another room) ----
+  // ---- Hosted room state (persists when host visits another room or goes to menu) ----
   const [hostedRoom, setHostedRoom] = useState(null); // {id, name, nowPlaying, audienceCount, isPublic}
   const [isVisiting, setIsVisiting] = useState(false); // true when host is visiting another room
+  const [isOnMenu, setIsOnMenu] = useState(false); // true when host went to main menu but room is alive
+  
+  // Data needed to reload host audio when returning to their room
+  const [hostReturnData, setHostReturnData] = useState(null); // {audioSource, aiParams, lastSync}
 
   // ---- Audience sync state ----
   const [audienceAudioSource, setAudienceAudioSource] = useState(null);
@@ -50,6 +54,14 @@ export function RoomProvider({ children }) {
   
   // Initial visualizer state received on join (separate from live host actions)
   const [initialVisualizerState, setInitialVisualizerState] = useState(null);
+
+  // ---- Queue state ----
+  const [queue, setQueue] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [mySuggestion, setMySuggestion] = useState(null); // audience's active pending suggestion
+
+  // Queue event listeners (for App.jsx to handle queue_play_next)
+  const queueListenersRef = useRef([]);
 
   // Host action queue - audience reads and clears these
   const hostActionListenersRef = useRef([]);
@@ -94,16 +106,19 @@ export function RoomProvider({ children }) {
         setCurrentRoom(data.room);
         setIsHost(true);
         setIsVisiting(false);
+        setIsOnMenu(false);
         setRoomName(data.room.name);
         setIsPublic(data.room.isPublic);
         setMembers(data.members || []);
         setMessages([]);
-        setHostedRoom(null); // Will be set after room is fully created
-        // Clear audience state since we're the host
+        setHostedRoom(null);
         setAudienceAudioSource(null);
         setAudienceAiParams(null);
         setAudienceSync(null);
         setInitialVisualizerState(null);
+        setQueue([]);
+        setSuggestions([]);
+        setMySuggestion(null);
         break;
 
       case 'room_joined': {
@@ -128,29 +143,64 @@ export function RoomProvider({ children }) {
         
         // Store initial visualizer state separately so App.jsx can apply it after audio loads
         setInitialVisualizerState(room.hostVisualizerState || null);
+        
+        // Queue state
+        setQueue(room.queue || []);
+        setSuggestions(room.suggestions || []);
+        setMySuggestion(null);
         break;
       }
+
+      case 'went_to_menu':
+        setCurrentRoom(null);
+        setIsHost(false);
+        setIsVisiting(false);
+        setIsOnMenu(true);
+        setRoomName('');
+        setIsPublic(false);
+        setMembers([]);
+        setMessages([]);
+        setAudienceAudioSource(null);
+        setAudienceAiParams(null);
+        setAudienceSync(null);
+        setInitialVisualizerState(null);
+        if (data.hostedRoom) {
+          setHostedRoom(data.hostedRoom);
+        }
+        break;
 
       case 'returned_to_room': {
         const room = data.room;
         setCurrentRoom(room);
         setIsHost(true);
         setIsVisiting(false);
+        setIsOnMenu(false);
         setRoomName(room.name);
         setIsPublic(room.isPublic);
         setMembers(data.members || []);
         setMessages(data.messages || []);
+        // Provide audio data so App.jsx can reload the host's audio
+        if (data.needsAudioReload && room.audioSource) {
+          setHostReturnData({
+            audioSource: room.audioSource,
+            aiParams: room.aiParams || null,
+            lastSync: room.lastSync || null,
+            hostVisualizerState: room.hostVisualizerState || null,
+          });
+        }
         // Clear audience state - we're the host again
         setAudienceAudioSource(null);
         setAudienceAiParams(null);
         setAudienceSync(null);
         setInitialVisualizerState(null);
+        setHostedRoom(null);
         break;
       }
 
       case 'hosted_room_ended':
         setHostedRoom(null);
         setIsVisiting(false);
+        setIsOnMenu(false);
         break;
 
       case 'hosted_room_updated':
@@ -203,6 +253,7 @@ export function RoomProvider({ children }) {
         // If the closed room was our hosted room, clear that too
         setHostedRoom(null);
         setIsVisiting(false);
+        setIsOnMenu(false);
         break;
 
       case 'left_room':
@@ -256,6 +307,33 @@ export function RoomProvider({ children }) {
         hostActionListenersRef.current.forEach(listener => {
           listener({ action: data.action, payload: data.payload || {} });
         });
+        break;
+
+      // ---- Queue messages ----
+      case 'queue_update':
+        setQueue(data.queue || []);
+        setSuggestions(data.suggestions || []);
+        break;
+
+      case 'queue_play_next':
+        // Dispatch to queue listeners (App.jsx handles playback)
+        queueListenersRef.current.forEach(listener => {
+          listener(data.item);
+        });
+        break;
+
+      case 'new_suggestion':
+        setSuggestions(prev => [...prev, data.suggestion]);
+        break;
+
+      case 'suggestion_sent':
+        setMySuggestion(data.suggestion);
+        break;
+
+      case 'suggestion_response':
+        if (data.action === 'approved' || data.action === 'rejected') {
+          setMySuggestion(null);
+        }
         break;
 
       case 'error':
@@ -343,9 +421,17 @@ export function RoomProvider({ children }) {
     wsSend({ type: 'leave_room' });
   }, [wsSend]);
 
+  const goToMenu = useCallback(() => {
+    wsSend({ type: 'go_to_menu' });
+  }, [wsSend]);
+
   const returnToHostedRoom = useCallback(() => {
     wsSend({ type: 'return_to_room' });
   }, [wsSend]);
+
+  const clearHostReturnData = useCallback(() => {
+    setHostReturnData(null);
+  }, []);
 
   const endHostedRoom = useCallback(() => {
     wsSend({ type: 'end_room' });
@@ -386,6 +472,42 @@ export function RoomProvider({ children }) {
     wsSend({ type: 'host_action', action, payload });
   }, [wsSend]);
 
+  // ---- Queue actions ----
+  const queueAdd = useCallback((title, source, url, soundcloudUrl) => {
+    wsSend({ type: 'queue_add', title, source, url, soundcloudUrl });
+  }, [wsSend]);
+
+  const queueRemove = useCallback((itemId) => {
+    wsSend({ type: 'queue_remove', itemId });
+  }, [wsSend]);
+
+  const queueReorder = useCallback((order) => {
+    wsSend({ type: 'queue_reorder', order }); // order = list of item IDs
+  }, [wsSend]);
+
+  const queueUpdateItem = useCallback((itemId, status, aiParams) => {
+    wsSend({ type: 'queue_update_item', itemId, status, aiParams });
+  }, [wsSend]);
+
+  const queueAdvance = useCallback(() => {
+    wsSend({ type: 'queue_advance' });
+  }, [wsSend]);
+
+  const suggestSong = useCallback((title, source, url) => {
+    wsSend({ type: 'suggest_song', title, source, url });
+  }, [wsSend]);
+
+  const respondSuggestion = useCallback((suggestionId, action) => {
+    wsSend({ type: 'respond_suggestion', suggestionId, action }); // action = "approve" | "reject"
+  }, [wsSend]);
+
+  const onQueuePlayNext = useCallback((listener) => {
+    queueListenersRef.current.push(listener);
+    return () => {
+      queueListenersRef.current = queueListenersRef.current.filter(l => l !== listener);
+    };
+  }, []);
+
   // ---- Upload audio file (host only) ----
   const uploadAudioFile = useCallback(async (file) => {
     const formData = new FormData();
@@ -410,13 +532,18 @@ export function RoomProvider({ children }) {
     messages, sendMessage,
     createRoom, joinRoom, leaveRoom, togglePublic, updateRoomName, updateNowPlaying,
     isConnected,
-    // Hosted room (for miniplayer when visiting)
-    hostedRoom, isVisiting, returnToHostedRoom, endHostedRoom,
+    // Hosted room (for miniplayer when visiting or on menu)
+    hostedRoom, isVisiting, isOnMenu, goToMenu, returnToHostedRoom, endHostedRoom,
+    hostReturnData, clearHostReturnData,
     // Audio sync
     setAudioSource, sendSyncState, broadcastHostAction, uploadAudioFile,
     audienceAudioSource, audienceAiParams, audienceSync,
     initialVisualizerState,
     onHostAction,
+    // Queue
+    queue, suggestions, mySuggestion,
+    queueAdd, queueRemove, queueReorder, queueUpdateItem, queueAdvance,
+    suggestSong, respondSuggestion, onQueuePlayNext,
   };
 
   return <RoomContext.Provider value={value}>{children}</RoomContext.Provider>;
