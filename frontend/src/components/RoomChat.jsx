@@ -3,7 +3,7 @@ import { useRoom } from '../context/RoomContext';
 import '../styles/room-chat.css';
 
 export default function RoomChat({ visible }) {
-  const { currentRoom, messages, sendMessage, isHost } = useRoom();
+  const { currentRoom, messages, sendMessage, isHost, userId } = useRoom();
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [hasUnread, setHasUnread] = useState(false);
@@ -37,13 +37,13 @@ export default function RoomChat({ visible }) {
   };
 
   const formatTime = (timestamp) => {
-    const date = new Date(timestamp);
+    const date = new Date(timestamp * 1000); // backend sends seconds
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
     <>
-      {/* Toggle button */}
+      {/* Toggle button - now more visible with a label */}
       <button
         className={`chat-toggle ${isOpen ? 'open' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
@@ -52,13 +52,17 @@ export default function RoomChat({ visible }) {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
+        <span className="chat-toggle-label">Chat</span>
         {hasUnread && <span className="chat-unread-dot"></span>}
+        {messages.length > 0 && !isOpen && (
+          <span className="chat-toggle-count">{messages.length}</span>
+        )}
       </button>
 
       {/* Chat panel */}
       <div className={`chat-panel ${isOpen ? 'open' : ''}`}>
         <div className="chat-header">
-          <h3>Chat</h3>
+          <h3>Stage Chat</h3>
           <span className="chat-header-count">{messages.length}</span>
           <button className="chat-close" onClick={() => setIsOpen(false)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -78,7 +82,7 @@ export default function RoomChat({ visible }) {
             messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`chat-message ${msg.isSystem ? 'system' : ''} ${msg.isHost ? 'host' : ''}`}
+                className={`chat-message ${msg.isSystem ? 'system' : ''} ${msg.isHost ? 'host' : ''} ${msg.userId === userId ? 'self' : ''}`}
               >
                 {msg.isSystem ? (
                   <p className="chat-system-text">{msg.text}</p>
@@ -107,7 +111,7 @@ export default function RoomChat({ visible }) {
             placeholder="Type a message..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            maxLength={200}
+            maxLength={500}
           />
           <button
             className="chat-send"
