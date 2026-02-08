@@ -99,16 +99,17 @@ async def soundcloud_info(req: SoundCloudRequest):
                 "yt-dlp",
                 "--flat-playlist",
                 "--dump-json",
+                "--skip-download",
                 "--no-warnings",
-                "--ignore-errors",
-                "--no-check-certificate",
-                "--extractor-args", "soundcloud:client_id=",
+                "--extract-audio", "false",
+                "--audio-quality", "0",
                 url,
             ],
             capture_output=True,
             text=True,
             timeout=30,
         )
+
 
 
         if result.returncode != 0:
