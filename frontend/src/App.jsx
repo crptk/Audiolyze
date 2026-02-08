@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { fetchAIParams, fetchSoundCloudInfo, fetchSoundCloudDownload } from "./api/audiolyze";
 import VisualizerScene from './components/VisualizerScene';
@@ -12,6 +10,10 @@ import { useRoom } from './context/RoomContext';
 import { ENVIRONMENTS, pickRandomEnvironment } from './components/EnvironmentManager';
 import './App.css';
 import './styles/visualizer.css';
+import './styles/timeline.css';
+import './styles/stage-sidebar.css';
+import './styles/room-header.css';
+import './styles/room-chat.css';
 
 // Helper: get the API base URL
 function getApiBase() {
