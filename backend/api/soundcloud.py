@@ -4,8 +4,7 @@ import json
 import subprocess
 import tempfile
 import uuid
-import shutil
-
+import subprocess
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -90,7 +89,8 @@ async def soundcloud_info(req: SoundCloudRequest):
     """
     url = req.url.strip()
     logger.info("Fetching SoundCloud info for: %s", url)
-
+    subprocess.run(["ffmpeg", "-version"], check=True)
+    subprocess.run(["ffprobe", "-version"], check=True)
     try:
         # First try flat playlist to detect if it's a playlist
         result = subprocess.run(
