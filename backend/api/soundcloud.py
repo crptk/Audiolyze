@@ -78,6 +78,9 @@ async def soundcloud_info(req: SoundCloudRequest):
             # Playlist
             tracks = []
             for entry in entries:
+                print(f"[v0] Playlist entry keys: {entry.keys()}")
+                print(f"[v0] Playlist entry title: {entry.get('title', 'NO_TITLE')}")
+                print(f"[v0] Playlist entry url: {entry.get('url', 'NO_URL')}")
                 tracks.append({
                     "title": entry.get("title", "Unknown Track"),
                     "url": entry.get("url", ""),
@@ -85,6 +88,7 @@ async def soundcloud_info(req: SoundCloudRequest):
                     "uploader": entry.get("uploader", ""),
                 })
 
+            print(f"[v0] Returning {len(tracks)} tracks from playlist")
             return {
                 "ok": True,
                 "type": "playlist",

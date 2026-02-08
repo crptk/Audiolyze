@@ -352,12 +352,15 @@ function App() {
 
       if (info.type === 'playlist') {
         const tracks = info.tracks || [];
+        console.log('[v0] Received playlist with tracks:', tracks);
+        console.log('[v0] First track:', tracks[0]);
         if (tracks.length === 0) {
           setSoundcloudError('Playlist is empty');
           setIsLoading(false); setLoadingMessage(''); return;
         }
         // Download and play the first track immediately
         const firstTrack = tracks[0];
+        console.log('[v0] First track title:', firstTrack.title);
         setLoadingMessage(`Downloading: ${firstTrack.title}...`);
         const downloadData = await fetchSoundCloudDownload(firstTrack.url);
         if (!downloadData.ok) {
@@ -369,6 +372,7 @@ function App() {
         await loadSoundCloudTrack(blobUrl, firstTrack.title);
         // Add remaining tracks to the server-side queue
         for (let i = 1; i < tracks.length; i++) {
+          console.log(`[v0] Adding track ${i} to queue:`, tracks[i].title);
           queueAdd(tracks[i].title, 'soundcloud', tracks[i].url, tracks[i].url);
         }
       } else {
