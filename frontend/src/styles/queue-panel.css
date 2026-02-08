@@ -499,6 +499,136 @@
   animation: spinnerRotate 3s linear infinite;
 }
 
+/* ======== Host Add Song Section ======== */
+.queue-add-section {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 12px !important;
+}
+
+.queue-add-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.queue-add-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.queue-add-btn:hover {
+  background: rgba(200, 255, 122, 0.06);
+  border-color: rgba(200, 255, 122, 0.25);
+  color: rgba(200, 255, 122, 0.9);
+}
+
+.queue-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.queue-add-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.queue-add-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.queue-add-input:focus {
+  border-color: rgba(200, 255, 122, 0.3);
+}
+
+.queue-add-input:disabled {
+  opacity: 0.5;
+}
+
+.queue-add-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(200, 255, 122, 0.12);
+  border: 1px solid rgba(200, 255, 122, 0.25);
+  border-radius: 8px;
+  color: rgba(200, 255, 122, 0.9);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.queue-add-submit:hover:not(:disabled) {
+  background: rgba(200, 255, 122, 0.2);
+}
+
+.queue-add-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.queue-add-cancel {
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.queue-add-cancel:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.queue-add-loading {
+  padding: 8px;
+  text-align: center;
+  color: rgba(200, 255, 122, 0.7);
+  font-size: 12px;
+}
+
+.queue-add-error {
+  color: rgba(255, 100, 100, 0.8);
+  font-size: 12px;
+  padding: 4px 0 0;
+  margin: 0;
+}
+
+.queue-add-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(200, 255, 122, 0.2);
+  border-top-color: rgba(200, 255, 122, 0.8);
+  border-radius: 50%;
+  animation: queue-spin 0.7s linear infinite;
+}
+
+@keyframes queue-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Backdrop */
 .queue-backdrop {
   position: fixed;

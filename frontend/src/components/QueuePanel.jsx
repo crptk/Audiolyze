@@ -1,11 +1,12 @@
 import { useState, useRef } from 'react';
 import { useRoom } from '../context/RoomContext';
+import { fetchSoundCloudInfo, fetchSoundCloudDownload } from '../api/audiolyze';
 import '../styles/queue-panel.css';
 
 export default function QueuePanel({ visible, isAudience }) {
   const {
     queue, suggestions, mySuggestion, isHost,
-    queueRemove, queueReorder, respondSuggestion, suggestSong,
+    queueAdd, queueRemove, queueReorder, respondSuggestion, suggestSong, uploadAudioFile,
   } = useRoom();
   const [isOpen, setIsOpen] = useState(false);
   const [suggestMode, setSuggestMode] = useState(false);
@@ -14,13 +15,21 @@ export default function QueuePanel({ visible, isAudience }) {
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const dragItemRef = useRef(null);
 
+  // Host add song state
+  const [addMode, setAddMode] = useState(false); // false | 'soundcloud' | 'file'
+  const [addUrl, setAddUrl] = useState('');
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState('');
+  const fileInputRef = useRef(null);
+
   if (!visible) return null;
 
   // Split queue into sections
   const activeQueue = queue.filter(q => q.status !== 'played');
   const nowPlaying = activeQueue.find(q => q.status === 'playing');
-  const priorityQueue = activeQueue.filter(q => q.status !== 'playing').slice(0, 3);
-  const lowPriorityQueue = activeQueue.filter(q => q.status !== 'playing').slice(3);
+  const upNext = activeQueue.filter(q => q.status !== 'playing');
+  const priorityQueue = upNext.slice(0, 3);
+  const lowPriorityQueue = upNext.slice(3);
 
   const handleDragStart = (e, idx) => {
     if (!isHost) return;
@@ -37,7 +46,6 @@ export default function QueuePanel({ visible, isAudience }) {
     e.preventDefault();
     setDragOverIdx(null);
     if (dragItemRef.current === null || dragItemRef.current === dropIdx) return;
-    // Build new order for low-priority items
     const items = [...lowPriorityQueue];
     const [removed] = items.splice(dragItemRef.current, 1);
     items.splice(dropIdx, 0, removed);
@@ -50,9 +58,85 @@ export default function QueuePanel({ visible, isAudience }) {
     dragItemRef.current = null;
   };
 
+  // Host: Add SoundCloud song to queue
+  const handleAddSoundCloud = async () => {
+    if (!addUrl.trim()) return;
+    setAddLoading(true);
+    setAddError('');
+
+    try {
+      const info = await fetchSoundCloudInfo(addUrl.trim());
+      if (!info.ok) {
+        setAddError(info.error || 'Failed to fetch info');
+        setAddLoading(false);
+        return;
+      }
+
+      if (info.type === 'playlist') {
+        // Add all tracks from playlist to queue
+        const tracks = info.tracks || [];
+        if (tracks.length === 0) {
+          setAddError('Playlist is empty');
+          setAddLoading(false);
+          return;
+        }
+        for (const track of tracks) {
+          queueAdd(track.title, 'soundcloud', track.url, track.url);
+        }
+      } else {
+        // Single track - download first, then add
+        const downloadData = await fetchSoundCloudDownload(addUrl.trim());
+        if (!downloadData.ok) {
+          setAddError(downloadData.error || 'Download failed');
+          setAddLoading(false);
+          return;
+        }
+        const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+        queueAdd(info.title, 'soundcloud', `${apiBase}${downloadData.file_url}`, addUrl.trim());
+      }
+
+      setAddUrl('');
+      setAddMode(false);
+    } catch (err) {
+      console.error('Queue add SoundCloud error:', err);
+      setAddError('Failed to process SoundCloud URL');
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
+  // Host: Add uploaded MP3 file to queue
+  const handleAddFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('audio/') && !file.name.endsWith('.m4v')) {
+      setAddError('Only audio files are accepted');
+      return;
+    }
+    setAddLoading(true);
+    setAddError('');
+
+    try {
+      const result = await uploadAudioFile(file);
+      if (result && result.file_url) {
+        const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+        const title = file.name.replace(/\.(mp3|m4v|wav|ogg|m4a)$/i, '');
+        queueAdd(title, 'file', `${apiBase}${result.file_url}`);
+      } else {
+        setAddError('Upload failed');
+      }
+    } catch (err) {
+      console.error('Queue add file error:', err);
+      setAddError('Failed to upload file');
+    } finally {
+      setAddLoading(false);
+      setAddMode(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleSuggestSubmit = () => {
     if (!suggestUrl.trim()) return;
-    // Determine if it's a SoundCloud URL
     const isSoundCloud = suggestUrl.includes('soundcloud.com');
     suggestSong(
       suggestTitle.trim() || suggestUrl.trim(),
@@ -105,6 +189,83 @@ export default function QueuePanel({ visible, isAudience }) {
         </div>
 
         <div className="queue-panel-content">
+          {/* Host: Add Song Section */}
+          {isHost && (
+            <div className="queue-section queue-add-section">
+              {!addMode ? (
+                <div className="queue-add-buttons">
+                  <button
+                    className="queue-add-btn"
+                    onClick={() => { setAddMode('soundcloud'); setAddError(''); }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M11.56 8.87V17h8.76c1.85 0 3.35-1.67 3.35-3.73 0-2.07-1.5-3.74-3.35-3.74-.34 0-.67.05-.98.14C18.87 6.66 16.5 4.26 13.56 4.26c-.84 0-1.63.2-2.33.56v4.05zm-1.3-3.2v11.33h-.5V6.4c-.5-.2-1.03-.31-1.59-.31-2.35 0-4.25 2.08-4.25 4.64 0 .4.05.79.14 1.17-.13-.01-.26-.02-.4-.02-1.85 0-3.35 1.59-3.35 3.56S1.81 19 3.66 19h5.1V5.67z"/>
+                    </svg>
+                    Add SoundCloud
+                  </button>
+                  <button
+                    className="queue-add-btn"
+                    onClick={() => { setAddMode('file'); setAddError(''); fileInputRef.current?.click(); }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Add MP3
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".mp3,.m4v,audio/mpeg,video/mp4"
+                    onChange={handleAddFile}
+                    style={{ display: 'none' }}
+                  />
+                </div>
+              ) : addMode === 'soundcloud' ? (
+                <div className="queue-add-form">
+                  <div className="queue-add-input-row">
+                    <input
+                      type="text"
+                      className="queue-add-input"
+                      placeholder="Paste SoundCloud link..."
+                      value={addUrl}
+                      onChange={(e) => setAddUrl(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleAddSoundCloud(); }}
+                      autoFocus
+                      disabled={addLoading}
+                    />
+                    <button
+                      className="queue-add-submit"
+                      onClick={handleAddSoundCloud}
+                      disabled={!addUrl.trim() || addLoading}
+                    >
+                      {addLoading ? (
+                        <div className="queue-add-spinner"></div>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="12" y1="5" x2="12" y2="19" />
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  <button className="queue-add-cancel" onClick={() => { setAddMode(false); setAddUrl(''); setAddError(''); }}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="queue-add-form">
+                  {addLoading && <div className="queue-add-loading">Uploading file...</div>}
+                  <button className="queue-add-cancel" onClick={() => { setAddMode(false); setAddError(''); }}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {addError && <p className="queue-add-error">{addError}</p>}
+            </div>
+          )}
+
           {/* Now Playing */}
           {nowPlaying && (
             <div className="queue-section">
@@ -138,6 +299,14 @@ export default function QueuePanel({ visible, isAudience }) {
                       {item.addedByName && ` - added by ${item.addedByName}`}
                     </span>
                   </div>
+                  {isHost && (
+                    <button className="queue-item-remove" onClick={() => queueRemove(item.id)} title="Remove">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  )}
                   {item.status === 'analyzing' && (
                     <div className="queue-item-spinner"></div>
                   )}
@@ -202,7 +371,7 @@ export default function QueuePanel({ visible, isAudience }) {
                 <circle cx="18" cy="16" r="3" />
               </svg>
               <p>No songs in queue</p>
-              <span>{isHost ? 'Play a song to start the queue' : 'Host hasn\'t added songs yet'}</span>
+              <span>{isHost ? 'Add songs using the buttons above' : 'Host hasn\'t added songs yet'}</span>
             </div>
           )}
 

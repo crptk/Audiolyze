@@ -33,11 +33,6 @@ function App() {
   // Now playing info
   const [nowPlaying, setNowPlaying] = useState(null);
 
-  // Playlist queue
-  const [playlistQueue, setPlaylistQueue] = useState([]);
-  const [playlistIndex, setPlaylistIndex] = useState(-1);
-  const isPlayingFromQueueRef = useRef(false);
-
   // Audio playback state
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -68,7 +63,7 @@ function App() {
     audienceAudioSource, audienceAiParams, audienceSync,
     initialVisualizerState, hostedRoom, isVisiting, isOnMenu, goToMenu, returnToHostedRoom, endHostedRoom,
     hostReturnData, clearHostReturnData, userId,
-    queueAdvance, onQueuePlayNext } = useRoom();
+    queueAdd, queueAdvance, onQueuePlayNext } = useRoom();
   
   const isAudience = !!currentRoom && !isHost;
   
@@ -268,7 +263,8 @@ function App() {
     audio.addEventListener('ended', () => {
       setIsPlaying(false);
       setCurrentTime(0);
-      if (isPlayingFromQueueRef.current) playNextInQueue();
+      // Advance queue if host
+      if (isHost) queueAdvance();
     });
 
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -328,89 +324,13 @@ function App() {
       { type: 'soundcloud', url: blobUrl, title },
       params
     );
-  }, [currentRoom, createRoom, updateNowPlaying, setAudioSource]);
+  }, [currentRoom, createRoom, updateNowPlaying, setAudioSource, isHost, queueAdvance]);
 
-  const playNextInQueue = useCallback(async () => {
-    setPlaylistIndex(prev => {
-      const nextIdx = prev + 1;
-      if (nextIdx >= playlistQueue.length) {
-        isPlayingFromQueueRef.current = false;
-        return prev;
-      }
-      const nextTrack = playlistQueue[nextIdx];
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-      if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
-      audioFiltersRef.current = null;
-      setAnalyser(null); setAiParams(null); setIsPlaying(false); setCurrentTime(0); setDuration(0); setCurrentShape(null);
 
-      (async () => {
-        setIsLoading(true);
-        setLoadingMessage(`Downloading: ${nextTrack.title}...`);
-        try {
-          const downloadData = await fetchSoundCloudDownload(nextTrack.url);
-          if (!downloadData.ok) { playNextInQueue(); return; }
-          const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
-          await loadSoundCloudTrack(blobUrl, nextTrack.title);
-        } catch (err) {
-          console.error('Failed to download track:', nextTrack.title, err);
-          isPlayingFromQueueRef.current = true;
-          playNextInQueue();
-        }
-      })();
-      return nextIdx;
-    });
-  }, [playlistQueue, loadSoundCloudTrack]);
 
-  const playPreviousInQueue = useCallback(async () => {
-    setPlaylistIndex(prev => {
-      const prevIdx = prev - 1;
-      if (prevIdx < 0) return prev;
-      const prevTrack = playlistQueue[prevIdx];
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-      if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
-      audioFiltersRef.current = null;
-      setAnalyser(null); setAiParams(null); setIsPlaying(false); setCurrentTime(0); setDuration(0); setCurrentShape(null);
 
-      (async () => {
-        setIsLoading(true);
-        setLoadingMessage(`Downloading: ${prevTrack.title}...`);
-        try {
-          const downloadData = await fetchSoundCloudDownload(prevTrack.url);
-          if (!downloadData.ok) return;
-          const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
-          await loadSoundCloudTrack(blobUrl, prevTrack.title);
-        } catch (err) {
-          console.error('Failed to download track:', prevTrack.title, err);
-        }
-      })();
-      return prevIdx;
-    });
-  }, [playlistQueue, loadSoundCloudTrack]);
 
-  const playPlaylistTrack = useCallback(async (trackIndex) => {
-    if (trackIndex < 0 || trackIndex >= playlistQueue.length) return;
-    if (trackIndex === playlistIndex) return;
-    const selectedTrack = playlistQueue[trackIndex];
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-    if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
-    audioFiltersRef.current = null;
-    setAnalyser(null); setAiParams(null); setIsPlaying(false); setCurrentTime(0); setDuration(0); setCurrentShape(null);
 
-    setIsLoading(true);
-    setLoadingMessage(`Downloading: ${selectedTrack.title}...`);
-    setPlaylistIndex(trackIndex);
-
-    try {
-      const downloadData = await fetchSoundCloudDownload(selectedTrack.url);
-      if (!downloadData.ok) { setIsLoading(false); setLoadingMessage(''); return; }
-      const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
-      await loadSoundCloudTrack(blobUrl, selectedTrack.title);
-    } catch (err) {
-      console.error('Failed to download track:', selectedTrack.title, err);
-      setIsLoading(false);
-      setLoadingMessage('');
-    }
-  }, [playlistQueue, playlistIndex, loadSoundCloudTrack]);
 
   const handleSoundCloudSubmit = async () => {
     if (!soundcloudUrl.trim()) return;
@@ -431,9 +351,7 @@ function App() {
           setSoundcloudError('Playlist is empty');
           setIsLoading(false); setLoadingMessage(''); return;
         }
-        setPlaylistQueue(tracks);
-        setPlaylistIndex(0);
-        isPlayingFromQueueRef.current = true;
+        // Download and play the first track immediately
         const firstTrack = tracks[0];
         setLoadingMessage(`Downloading: ${firstTrack.title}...`);
         const downloadData = await fetchSoundCloudDownload(firstTrack.url);
@@ -441,8 +359,13 @@ function App() {
           setSoundcloudError('Failed to download first track');
           setIsLoading(false); setLoadingMessage(''); return;
         }
-        const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
+        const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+        const blobUrl = `${apiBase}${downloadData.file_url}`;
         await loadSoundCloudTrack(blobUrl, firstTrack.title);
+        // Add remaining tracks to the server-side queue
+        for (let i = 1; i < tracks.length; i++) {
+          queueAdd(tracks[i].title, 'soundcloud', tracks[i].url, tracks[i].url);
+        }
       } else {
         setLoadingMessage(`Downloading: ${info.title}...`);
         const downloadData = await fetchSoundCloudDownload(soundcloudUrl.trim());
@@ -450,7 +373,8 @@ function App() {
           setSoundcloudError(downloadData.error || 'Download failed');
           setIsLoading(false); setLoadingMessage(''); return;
         }
-        const blobUrl = `http://127.0.0.1:8000${downloadData.file_url}`;
+        const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+        const blobUrl = `${apiBase}${downloadData.file_url}`;
         await loadSoundCloudTrack(blobUrl, info.title);
       }
     } catch (err) {
@@ -479,11 +403,6 @@ function App() {
     setAudioTuning({ bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 });
     setAudioPlaybackTuning({ bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 });
     setNowPlaying(null);
-    setPlaylistQueue([]);
-    setPlaylistIndex(-1);
-    isPlayingFromQueueRef.current = false;
-    setSoundcloudUrl('');
-    setSoundcloudError('');
     audienceLoadedSourceRef.current = null;
   }, []);
 
@@ -629,7 +548,7 @@ function App() {
     audio.addEventListener('ended', () => {
       setIsPlaying(false);
       setCurrentTime(0);
-      if (isPlayingFromQueueRef.current) playNextInQueue();
+      queueAdvance();
     });
 
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -681,7 +600,7 @@ function App() {
         setIsPlaying(true);
       }
     }
-  }, [hostReturnData, isHost, clearHostReturnData]);
+  }, [hostReturnData, isHost, clearHostReturnData, queueAdvance]);
 
   // Keep a ref to audienceSync so the audio loading effect can read it without re-running
   const audienceSyncRef = useRef(audienceSync);
@@ -1174,11 +1093,6 @@ function App() {
         }}
         onReset={handleReset}
         nowPlaying={nowPlaying}
-        playlistQueue={playlistQueue}
-        playlistIndex={playlistIndex}
-        onNext={playNextInQueue}
-        onPrevious={playPreviousInQueue}
-        onPlaylistTrackSelect={playPlaylistTrack}
         anaglyphEnabled={anaglyphEnabled}
         onAnaglyphToggle={setAnaglyphEnabled}
         audioTuning={audioTuning}

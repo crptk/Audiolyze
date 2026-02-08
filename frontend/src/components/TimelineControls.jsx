@@ -19,11 +19,6 @@ export default function TimelineControls({
   onEnvironmentChange,
   onReset,
   nowPlaying = null,
-  playlistQueue = [],
-  playlistIndex = -1,
-  onNext,
-  onPrevious,
-  onPlaylistTrackSelect,
   anaglyphEnabled = false,
   onAnaglyphToggle,
   audioTuning = { bass: 1.0, mid: 1.0, treble: 1.0, sensitivity: 1.0 },
@@ -38,11 +33,9 @@ export default function TimelineControls({
   const [showManualControls, setShowManualControls] = useState(false);
   const [showShapeDropdown, setShowShapeDropdown] = useState(false);
   const [showEnvironmentDropdown, setShowEnvironmentDropdown] = useState(false);
-  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const timelineRef = useRef(null);
   const shapeDropdownRef = useRef(null);
   const environmentDropdownRef = useRef(null);
-  const playlistModalRef = useRef(null);
 
   const shapes = [
     { id: 'jellyfish', label: 'Jellyfish', icon: '🪼' },
@@ -136,22 +129,6 @@ export default function TimelineControls({
       };
     }
   }, [showEnvironmentDropdown]);
-
-  // Close playlist modal when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (playlistModalRef.current && !playlistModalRef.current.contains(event.target)) {
-        setShowPlaylistModal(false);
-      }
-    };
-
-    if (showPlaylistModal) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-  }, [showPlaylistModal]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -447,21 +424,6 @@ export default function TimelineControls({
       <div className="controls-container">
         {/* Playback Controls */}
         <div className={`playback-controls ${isAudience ? 'audience-disabled' : ''}`}>
-          {/* Previous Button (only show for playlists, host only) */}
-          {!isAudience && playlistQueue.length > 1 && (
-            <button
-              className="control-button prev-button"
-              onClick={onPrevious}
-              disabled={playlistIndex <= 0}
-              title="Previous track"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="19 20 9 12 19 4 19 20" fill="currentColor" />
-                <line x1="5" y1="4" x2="5" y2="20" stroke="currentColor" strokeWidth="2" />
-              </svg>
-            </button>
-          )}
-
           {/* Play/Pause Button - shows status for audience, clickable for host */}
           <button
             className={`control-button play-pause ${isAudience ? 'audience-readonly' : ''}`}
@@ -481,20 +443,6 @@ export default function TimelineControls({
             )}
           </button>
 
-          {/* Next Button (only show for playlists, host only) */}
-          {!isAudience && playlistQueue.length > 1 && (
-            <button
-              className="control-button next-button"
-              onClick={onNext}
-              disabled={playlistIndex >= playlistQueue.length - 1}
-              title="Next track"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" />
-                <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" strokeWidth="2" />
-              </svg>
-            </button>
-          )}
         </div>
 
         {/* Speed Control - host only */}
@@ -532,11 +480,7 @@ export default function TimelineControls({
         {/* Now Playing (right-aligned) */}
         {nowPlaying && (
           <div className="now-playing-container">
-            <div 
-              className={`now-playing ${playlistQueue.length > 1 ? 'clickable' : ''}`}
-              onClick={() => playlistQueue.length > 1 && setShowPlaylistModal(true)}
-              title={playlistQueue.length > 1 ? 'View playlist' : ''}
-            >
+            <div className="now-playing">
               <div className="now-playing-icon">
                 {nowPlaying.source === 'soundcloud' ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -553,59 +497,8 @@ export default function TimelineControls({
               <div className="now-playing-info">
                 <span className="now-playing-label">Now Playing</span>
                 <span className="now-playing-title">{nowPlaying.title}</span>
-                {playlistQueue.length > 1 && (
-                  <span className="now-playing-queue">
-                    {playlistIndex + 1} / {playlistQueue.length}
-                  </span>
-                )}
               </div>
             </div>
-
-            {/* Playlist Modal */}
-            {showPlaylistModal && playlistQueue.length > 1 && (
-              <div className="playlist-modal" ref={playlistModalRef}>
-                <div className="playlist-modal-header">
-                  <h3>Playlist</h3>
-                  <button 
-                    className="playlist-modal-close"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowPlaylistModal(false);
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="playlist-modal-tracks">
-                  {playlistQueue.map((track, index) => (
-                    <div
-                      key={index}
-                      className={`playlist-track ${index === playlistIndex ? 'active' : ''}`}
-                      onClick={() => {
-                        if (onPlaylistTrackSelect) {
-                          onPlaylistTrackSelect(index);
-                        }
-                        setShowPlaylistModal(false);
-                      }}
-                    >
-                      <div className="playlist-track-number">
-                        {index === playlistIndex ? (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                            <polygon points="5 3 19 12 5 21 5 3" />
-                          </svg>
-                        ) : (
-                          <span>{index + 1}</span>
-                        )}
-                      </div>
-                      <div className="playlist-track-title">{track.title}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
