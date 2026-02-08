@@ -1,3 +1,8 @@
-import subprocess
-subprocess.run(["ffmpeg", "-version"], check=True)
-subprocess.run(["ffprobe", "-version"], check=True)
+[phases.setup]
+nixPkgs = ["ffmpeg"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[start]
+cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
