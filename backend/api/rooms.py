@@ -1,30 +1,43 @@
 """
 Real-time room / Stage system for Audiolyze.
 
-Every WebSocket connection represents one user in one room.
+Every WebSocket connection represents one user.
 Messages are JSON with a "type" field that determines the action.
 
 Room lifecycle:
   - Host creates a room (type: "create_room")
   - Room starts private; host can toggle public (type: "toggle_public")
-  - Other users can list public rooms via REST, then join via WebSocket
-  - Chat, now-playing updates, username changes all flow through the socket
+  - Other users list public rooms via REST, then join via WebSocket
+  - Chat, now-playing, sync, and host-action updates all flow through the socket
+
+Audio sync:
+  - Host stores the audio source (SoundCloud URL or uploaded file path) on the room
+  - Audience members receive audio_source on join so they can load the same audio
+  - Host periodically sends sync_state (currentTime, isPlaying, playbackSpeed)
+  - Host sends host_action for discrete events (play, pause, seek, shape change, etc.)
+  - Audience applies these to stay in sync
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import shutil
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, UploadFile, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rooms", tags=["rooms"])
+
+# Temp directory for uploaded audio files
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "rooms")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Data models (in-memory)
@@ -61,6 +74,14 @@ class Room:
     created_at: float = field(default_factory=time.time)
     members: dict[str, User] = field(default_factory=dict)  # user_id -> User
     messages: list[ChatMessage] = field(default_factory=list)
+    # Audio source for audience to load the same track
+    audio_source: dict | None = None  # {type: "soundcloud"|"upload", url: str, title: str}
+    # AI params so audience gets the same visualizer timeline
+    ai_params: dict | None = None
+    # Last known host playback state for late-joiners
+    last_sync: dict | None = None  # {currentTime, isPlaying, playbackSpeed, timestamp}
+    # Last known host visualizer state for late-joiners
+    host_visualizer_state: dict | None = None  # {shape, environment, audioTuning, ...}
 
 
 # ---------------------------------------------------------------------------
@@ -84,9 +105,19 @@ def _room_summary(room: Room) -> dict:
         "hostId": room.host_id,
         "isPublic": room.is_public,
         "nowPlaying": room.now_playing,
-        "audienceCount": max(0, len(room.members) - 1),  # exclude host
+        "audienceCount": max(0, len(room.members) - 1),
         "createdAt": room.created_at,
     }
+
+
+def _room_full(room: Room) -> dict:
+    """Full room state including audio source (for joiners)."""
+    summary = _room_summary(room)
+    summary["audioSource"] = room.audio_source
+    summary["aiParams"] = room.ai_params
+    summary["lastSync"] = room.last_sync
+    summary["hostVisualizerState"] = room.host_visualizer_state
+    return summary
 
 
 def _member_list(room: Room) -> list[dict]:
@@ -115,6 +146,16 @@ async def _broadcast(room: Room, data: dict, exclude_id: str | None = None):
         await asyncio.gather(*tasks)
 
 
+async def _broadcast_to_audience(room: Room, data: dict):
+    """Send to all audience members (everyone except host)."""
+    tasks = []
+    for uid, user in room.members.items():
+        if uid != room.host_id:
+            tasks.append(_send(user.ws, data))
+    if tasks:
+        await asyncio.gather(*tasks)
+
+
 async def _broadcast_public_rooms():
     """Broadcast the updated public rooms list to ALL connected users."""
     public = [_room_summary(r) for r in rooms.values() if r.is_public]
@@ -124,13 +165,51 @@ async def _broadcast_public_rooms():
         await asyncio.gather(*tasks)
 
 
+def _chat_msg_dict(msg: ChatMessage) -> dict:
+    return {
+        "id": msg.id,
+        "userId": msg.user_id,
+        "username": msg.username,
+        "text": msg.text,
+        "timestamp": msg.timestamp,
+        "isHost": msg.is_host,
+        "isSystem": msg.is_system,
+    }
+
+
 # ---------------------------------------------------------------------------
-# REST endpoint: list public rooms (for initial page load before WS)
+# REST endpoints
 # ---------------------------------------------------------------------------
 
 @router.get("/public")
 async def list_public_rooms():
     return [_room_summary(r) for r in rooms.values() if r.is_public]
+
+
+@router.post("/upload-audio")
+async def upload_audio(file: UploadFile = File(...)):
+    """Upload an audio file so audience members can download it."""
+    file_id = str(uuid.uuid4())[:12]
+    ext = os.path.splitext(file.filename or "audio.mp3")[1] or ".mp3"
+    filename = f"{file_id}{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+
+    with open(filepath, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    file_url = f"/rooms/uploads/{filename}"
+    return {"ok": True, "fileUrl": file_url, "filename": filename}
+
+
+from fastapi.responses import FileResponse
+
+@router.get("/uploads/{filename}")
+async def serve_upload(filename: str):
+    """Serve an uploaded audio file."""
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.isfile(filepath):
+        return {"error": "File not found"}
+    return FileResponse(filepath, media_type="audio/mpeg")
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +241,6 @@ async def room_websocket(ws: WebSocket):
             if msg_type == "set_username":
                 old_name = user.name
                 user.name = raw.get("name", "Anon")[:30]
-                # If in a room, broadcast the name change
                 if user.room_id and user.room_id in rooms:
                     room = rooms[user.room_id]
                     await _broadcast(room, {
@@ -176,7 +254,6 @@ async def room_websocket(ws: WebSocket):
 
             # ------ CREATE ROOM ------
             elif msg_type == "create_room":
-                # Leave current room first
                 await _leave_room(user)
 
                 room_id = str(uuid.uuid4())[:12]
@@ -211,15 +288,12 @@ async def room_websocket(ws: WebSocket):
                     await _send(ws, {"type": "error", "message": "Room is private"})
                     continue
 
-                # Leave current room
                 await _leave_room(user)
 
-                # Join new room
                 user.room_id = target_id
                 user.is_host = False
                 target.members[user_id] = user
 
-                # System message
                 sys_msg = ChatMessage(
                     id=str(uuid.uuid4())[:12],
                     user_id="system",
@@ -230,16 +304,15 @@ async def room_websocket(ws: WebSocket):
                 )
                 target.messages.append(sys_msg)
 
-                # Send joiner the full room state + recent chat history
+                # Send joiner the FULL room state including audio source + sync
                 recent = target.messages[-50:]
                 await _send(ws, {
                     "type": "room_joined",
-                    "room": _room_summary(target),
+                    "room": _room_full(target),
                     "members": _member_list(target),
                     "messages": [_chat_msg_dict(m) for m in recent],
                 })
 
-                # Broadcast to existing members
                 await _broadcast(target, {
                     "type": "user_joined",
                     "userId": user_id,
@@ -248,7 +321,6 @@ async def room_websocket(ws: WebSocket):
                     "systemMessage": _chat_msg_dict(sys_msg),
                 }, exclude_id=user_id)
 
-                # Update public room counts
                 await _broadcast_public_rooms()
 
             # ------ LEAVE ROOM ------
@@ -261,16 +333,13 @@ async def room_websocket(ws: WebSocket):
                     continue
                 room = rooms[user.room_id]
                 if room.host_id != user_id:
-                    continue  # only host can toggle
+                    continue
 
                 room.is_public = not room.is_public
-
                 await _broadcast(room, {
                     "type": "room_updated",
                     "room": _room_summary(room),
                 })
-
-                # Update global public rooms list
                 await _broadcast_public_rooms()
 
             # ------ RENAME ROOM ------
@@ -304,6 +373,86 @@ async def room_websocket(ws: WebSocket):
                 if room.is_public:
                     await _broadcast_public_rooms()
 
+            # ------ SET AUDIO SOURCE (host tells server what track to play) ------
+            elif msg_type == "set_audio_source":
+                if not user.room_id or user.room_id not in rooms:
+                    continue
+                room = rooms[user.room_id]
+                if room.host_id != user_id:
+                    continue
+                room.audio_source = raw.get("audioSource")
+                room.ai_params = raw.get("aiParams")
+                # Reset sync state for new track
+                room.last_sync = {"currentTime": 0, "isPlaying": False, "playbackSpeed": 1, "timestamp": time.time()}
+                room.host_visualizer_state = None
+                # Broadcast to audience so they can load the new track
+                await _broadcast_to_audience(room, {
+                    "type": "audio_source",
+                    "audioSource": room.audio_source,
+                    "aiParams": room.ai_params,
+                })
+
+            # ------ SYNC STATE (host sends periodic playback state) ------
+            elif msg_type == "sync_state":
+                if not user.room_id or user.room_id not in rooms:
+                    continue
+                room = rooms[user.room_id]
+                if room.host_id != user_id:
+                    continue
+                sync_data = {
+                    "currentTime": raw.get("currentTime", 0),
+                    "isPlaying": raw.get("isPlaying", False),
+                    "playbackSpeed": raw.get("playbackSpeed", 1),
+                    "timestamp": time.time(),
+                }
+                room.last_sync = sync_data
+                await _broadcast_to_audience(room, {
+                    "type": "sync_state",
+                    **sync_data,
+                })
+
+            # ------ HOST ACTION (discrete control events) ------
+            elif msg_type == "host_action":
+                if not user.room_id or user.room_id not in rooms:
+                    continue
+                room = rooms[user.room_id]
+                if room.host_id != user_id:
+                    continue
+                action = raw.get("action")
+                payload = raw.get("payload", {})
+
+                # Store relevant state for late-joiners
+                if action in ("shape_change", "environment_change", "eq_change", "anaglyph_toggle"):
+                    if room.host_visualizer_state is None:
+                        room.host_visualizer_state = {}
+                    if action == "shape_change":
+                        room.host_visualizer_state["shape"] = payload.get("shape")
+                    elif action == "environment_change":
+                        room.host_visualizer_state["environment"] = payload.get("environment")
+                    elif action == "eq_change":
+                        room.host_visualizer_state["audioTuning"] = payload.get("audioTuning")
+                        room.host_visualizer_state["audioPlaybackTuning"] = payload.get("audioPlaybackTuning")
+                    elif action == "anaglyph_toggle":
+                        room.host_visualizer_state["anaglyphEnabled"] = payload.get("enabled")
+
+                if action == "play":
+                    room.last_sync = {"currentTime": payload.get("currentTime", 0), "isPlaying": True, "playbackSpeed": payload.get("playbackSpeed", 1), "timestamp": time.time()}
+                elif action == "pause":
+                    room.last_sync = {"currentTime": payload.get("currentTime", 0), "isPlaying": False, "playbackSpeed": payload.get("playbackSpeed", 1), "timestamp": time.time()}
+                elif action == "seek":
+                    if room.last_sync:
+                        room.last_sync["currentTime"] = payload.get("time", 0)
+                        room.last_sync["timestamp"] = time.time()
+                elif action == "speed_change":
+                    if room.last_sync:
+                        room.last_sync["playbackSpeed"] = payload.get("speed", 1)
+
+                await _broadcast_to_audience(room, {
+                    "type": "host_action",
+                    "action": action,
+                    "payload": payload,
+                })
+
             # ------ CHAT MESSAGE ------
             elif msg_type == "chat_message":
                 text = raw.get("text", "").strip()[:500]
@@ -319,8 +468,6 @@ async def room_websocket(ws: WebSocket):
                     is_host=(room.host_id == user_id),
                 )
                 room.messages.append(msg)
-
-                # Keep message history bounded
                 if len(room.messages) > 200:
                     room.messages = room.messages[-100:]
 
@@ -352,12 +499,23 @@ async def _leave_room(user: User):
     room = rooms[user.room_id]
     room.members.pop(user.id, None)
     was_host = user.is_host
-    user.is_host = False
     old_room_id = user.room_id
+    user.is_host = False
     user.room_id = None
 
     if was_host or len(room.members) == 0:
         # Host left or room empty -> destroy room
+        # Clean up uploaded audio files for this room
+        if room.audio_source and room.audio_source.get("type") == "upload":
+            file_url = room.audio_source.get("url", "")
+            filename = file_url.split("/")[-1] if file_url else ""
+            filepath = os.path.join(UPLOAD_DIR, filename)
+            if os.path.isfile(filepath):
+                try:
+                    os.remove(filepath)
+                except Exception:
+                    pass
+
         for member in list(room.members.values()):
             member.room_id = None
             member.is_host = False
@@ -365,7 +523,6 @@ async def _leave_room(user: User):
         rooms.pop(old_room_id, None)
         await _broadcast_public_rooms()
     else:
-        # Audience member left
         sys_msg = ChatMessage(
             id=str(uuid.uuid4())[:12],
             user_id="system",
@@ -385,17 +542,4 @@ async def _leave_room(user: User):
         })
         await _broadcast_public_rooms()
 
-    # Confirm to the leaving user
     await _send(user.ws, {"type": "left_room"})
-
-
-def _chat_msg_dict(msg: ChatMessage) -> dict:
-    return {
-        "id": msg.id,
-        "userId": msg.user_id,
-        "username": msg.username,
-        "text": msg.text,
-        "timestamp": msg.timestamp,
-        "isHost": msg.is_host,
-        "isSystem": msg.is_system,
-    }

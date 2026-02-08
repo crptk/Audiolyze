@@ -32,6 +32,7 @@ export default function TimelineControls({
   onAudioPlaybackTuningChange,
   tuningLinked = true,
   onTuningLinkedChange,
+  isAudience = false,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [showManualControls, setShowManualControls] = useState(false);
@@ -68,6 +69,7 @@ export default function TimelineControls({
   };
 
   const handleTimelineClick = (e) => {
+    if (isAudience) return; // Audience can't seek
     if (!timelineRef.current || !duration) return;
 
     const rect = timelineRef.current.getBoundingClientRect();
@@ -77,6 +79,7 @@ export default function TimelineControls({
   };
 
   const handleMouseDown = (e) => {
+    if (isAudience) return; // Audience can't seek
     setIsDragging(true);
     handleTimelineClick(e);
   };
@@ -157,8 +160,9 @@ export default function TimelineControls({
   const SHAPE_TIMESTAMPS = aiParams?.shapeChanges || [30, 60, 90, 120];
 
   return (
-    <div className={`timeline-controls ${aiParams ? 'visible' : ''}`}>
-      {/* Manual Controls Dropdown */}
+    <div className={`timeline-controls ${aiParams || isAudience ? 'visible' : ''}`}>
+      {/* Manual Controls Dropdown - hidden for audience (host controls shape/env/EQ) */}
+      {!isAudience && (
       <div className="manual-controls-wrapper">
         <button
           className="manual-controls-toggle"
@@ -381,6 +385,25 @@ export default function TimelineControls({
           </div>
         )}
       </div>
+      )}
+
+      {/* Audience-only: 3D Anaglyph toggle (local control) */}
+      {isAudience && (
+        <div className="manual-controls-wrapper">
+          <button
+            className={`effect-toggle-button audience-3d-toggle ${anaglyphEnabled ? 'active' : ''}`}
+            onClick={() => { if (onAnaglyphToggle) onAnaglyphToggle(!anaglyphEnabled); }}
+            title={anaglyphEnabled ? 'Disable 3D Anaglyph' : 'Enable 3D Anaglyph (Red-Blue)'}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <circle cx="9" cy="10" r="3" style={{ stroke: anaglyphEnabled ? '#ff0000' : 'currentColor' }} />
+              <circle cx="15" cy="10" r="3" style={{ stroke: anaglyphEnabled ? '#00ffff' : 'currentColor' }} />
+            </svg>
+            <span>3D {anaglyphEnabled ? 'ON' : 'OFF'}</span>
+          </button>
+        </div>
+      )}
 
       <div className="timeline-container">
         {/* Timeline */}
@@ -423,9 +446,9 @@ export default function TimelineControls({
 
       <div className="controls-container">
         {/* Playback Controls */}
-        <div className="playback-controls">
-          {/* Previous Button (only show for playlists) */}
-          {playlistQueue.length > 1 && (
+        <div className={`playback-controls ${isAudience ? 'audience-disabled' : ''}`}>
+          {/* Previous Button (only show for playlists, host only) */}
+          {!isAudience && playlistQueue.length > 1 && (
             <button
               className="control-button prev-button"
               onClick={onPrevious}
@@ -439,11 +462,12 @@ export default function TimelineControls({
             </button>
           )}
 
-          {/* Play/Pause Button */}
+          {/* Play/Pause Button - shows status for audience, clickable for host */}
           <button
-            className="control-button play-pause"
-            onClick={onPlayPause}
-            title={isPlaying ? 'Pause' : 'Play'}
+            className={`control-button play-pause ${isAudience ? 'audience-readonly' : ''}`}
+            onClick={isAudience ? undefined : onPlayPause}
+            title={isAudience ? (isPlaying ? 'Playing (host controlled)' : 'Paused (host controlled)') : (isPlaying ? 'Pause' : 'Play')}
+            style={isAudience ? { cursor: 'default', opacity: 0.6 } : {}}
           >
             {isPlaying ? (
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -457,8 +481,8 @@ export default function TimelineControls({
             )}
           </button>
 
-          {/* Next Button (only show for playlists) */}
-          {playlistQueue.length > 1 && (
+          {/* Next Button (only show for playlists, host only) */}
+          {!isAudience && playlistQueue.length > 1 && (
             <button
               className="control-button next-button"
               onClick={onNext}
@@ -473,8 +497,8 @@ export default function TimelineControls({
           )}
         </div>
 
-        {/* Speed Control */}
-        <div className="speed-controls">
+        {/* Speed Control - host only */}
+        <div className="speed-controls" style={isAudience ? { display: 'none' } : {}}>
           <button
             className={`speed-button ${playbackSpeed === 0.5 ? 'active' : ''}`}
             onClick={() => onSpeedChange(0.5)}
