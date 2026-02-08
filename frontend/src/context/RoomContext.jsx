@@ -13,20 +13,18 @@ function generateGuestName() {
 
 const RoomContext = createContext(null);
 
-// Build WebSocket URL from the API base (convert http to ws)
 function getWsUrl() {
   const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
   return apiBase.replace(/^http/, 'ws') + '/rooms/ws';
 }
 
-// Build REST URL for public rooms
 function getRestUrl(path) {
   const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
   return `${apiBase}${path}`;
 }
 
 export function RoomProvider({ children }) {
-  // User identity (persisted across reconnects via ref)
+  // User identity
   const [username, setUsernameState] = useState(() => generateGuestName());
   const usernameRef = useRef(username);
   const [userId, setUserId] = useState(null);
@@ -36,37 +34,44 @@ export function RoomProvider({ children }) {
   const [isHost, setIsHost] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [isPublic, setIsPublic] = useState(false);
-
-  // Members in current room
   const [members, setMembers] = useState([]);
-
-  // Public rooms list
   const [publicRooms, setPublicRooms] = useState([]);
-
-  // Chat messages
   const [messages, setMessages] = useState([]);
-
-  // Connection state
   const [isConnected, setIsConnected] = useState(false);
 
-  // Refs for WebSocket management (stable across renders)
+  // ---- Audience sync state ----
+  // When audience joins, they receive the audio source + AI params + last sync + host visualizer state
+  // These are used by App.jsx to load audio and sync playback
+  const [audienceAudioSource, setAudienceAudioSource] = useState(null);
+  const [audienceAiParams, setAudienceAiParams] = useState(null);
+  const [audienceSync, setAudienceSync] = useState(null); // {currentTime, isPlaying, playbackSpeed, timestamp}
+
+  // Host action queue - audience reads and clears these
+  // Using a callback pattern so App.jsx can subscribe
+  const hostActionListenersRef = useRef([]);
+
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const mountedRef = useRef(true);
 
-  // Keep username ref in sync
-  useEffect(() => {
-    usernameRef.current = username;
-  }, [username]);
+  useEffect(() => { usernameRef.current = username; }, [username]);
 
-  // ------ Stable send helper ------
+  // Stable send helper
   const wsSend = useCallback((data) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(data));
     }
   }, []);
 
-  // ------ Handle incoming messages (uses functional state setters for stability) ------
+  // Subscribe to host actions (audience side)
+  const onHostAction = useCallback((listener) => {
+    hostActionListenersRef.current.push(listener);
+    return () => {
+      hostActionListenersRef.current = hostActionListenersRef.current.filter(l => l !== listener);
+    };
+  }, []);
+
+  // Handle incoming messages
   const handleMessage = useCallback((event) => {
     let data;
     try { data = JSON.parse(event.data); } catch { return; }
@@ -88,16 +93,40 @@ export function RoomProvider({ children }) {
         setIsPublic(data.room.isPublic);
         setMembers(data.members || []);
         setMessages([]);
+        // Clear audience state since we're the host
+        setAudienceAudioSource(null);
+        setAudienceAiParams(null);
+        setAudienceSync(null);
         break;
 
-      case 'room_joined':
-        setCurrentRoom(data.room);
+      case 'room_joined': {
+        const room = data.room;
+        setCurrentRoom(room);
         setIsHost(false);
-        setRoomName(data.room.name);
-        setIsPublic(data.room.isPublic);
+        setRoomName(room.name);
+        setIsPublic(room.isPublic);
         setMembers(data.members || []);
         setMessages(data.messages || []);
+        // Set audience audio/sync state from the full room data
+        setAudienceAudioSource(room.audioSource || null);
+        setAudienceAiParams(room.aiParams || null);
+        setAudienceSync(room.lastSync || null);
+        // Apply host visualizer state if available
+        if (room.hostVisualizerState) {
+          const vs = room.hostVisualizerState;
+          // Send as individual host_action events so App.jsx applies them
+          if (vs.shape) {
+            hostActionListenersRef.current.forEach(l => l({ action: 'shape_change', payload: { shape: vs.shape } }));
+          }
+          if (vs.environment) {
+            hostActionListenersRef.current.forEach(l => l({ action: 'environment_change', payload: { environment: vs.environment } }));
+          }
+          if (vs.audioTuning) {
+            hostActionListenersRef.current.forEach(l => l({ action: 'eq_change', payload: { audioTuning: vs.audioTuning, audioPlaybackTuning: vs.audioPlaybackTuning } }));
+          }
+        }
         break;
+      }
 
       case 'room_updated':
         setCurrentRoom(data.room);
@@ -107,16 +136,12 @@ export function RoomProvider({ children }) {
 
       case 'user_joined':
         setMembers(data.members || []);
-        if (data.systemMessage) {
-          setMessages(prev => [...prev, data.systemMessage]);
-        }
+        if (data.systemMessage) setMessages(prev => [...prev, data.systemMessage]);
         break;
 
       case 'user_left':
         setMembers(data.members || []);
-        if (data.systemMessage) {
-          setMessages(prev => [...prev, data.systemMessage]);
-        }
+        if (data.systemMessage) setMessages(prev => [...prev, data.systemMessage]);
         break;
 
       case 'user_renamed':
@@ -134,6 +159,9 @@ export function RoomProvider({ children }) {
         setIsPublic(false);
         setMembers([]);
         setMessages([]);
+        setAudienceAudioSource(null);
+        setAudienceAiParams(null);
+        setAudienceSync(null);
         break;
 
       case 'left_room':
@@ -143,10 +171,35 @@ export function RoomProvider({ children }) {
         setIsPublic(false);
         setMembers([]);
         setMessages([]);
+        setAudienceAudioSource(null);
+        setAudienceAiParams(null);
+        setAudienceSync(null);
         break;
 
       case 'public_rooms':
         setPublicRooms(data.rooms || []);
+        break;
+
+      // ---- Audience sync messages ----
+      case 'audio_source':
+        setAudienceAudioSource(data.audioSource);
+        setAudienceAiParams(data.aiParams);
+        break;
+
+      case 'sync_state':
+        setAudienceSync({
+          currentTime: data.currentTime,
+          isPlaying: data.isPlaying,
+          playbackSpeed: data.playbackSpeed,
+          timestamp: data.timestamp,
+        });
+        break;
+
+      case 'host_action':
+        // Dispatch to all listeners (App.jsx subscribes)
+        hostActionListenersRef.current.forEach(listener => {
+          listener({ action: data.action, payload: data.payload || {} });
+        });
         break;
 
       case 'error':
@@ -158,7 +211,7 @@ export function RoomProvider({ children }) {
     }
   }, []);
 
-  // ------ Connect WebSocket (stable, no deps on changing state) ------
+  // Connect WebSocket
   const connect = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
 
@@ -168,7 +221,6 @@ export function RoomProvider({ children }) {
     ws.onopen = () => {
       if (!mountedRef.current) { ws.close(); return; }
       setIsConnected(true);
-      // Send current username on connect/reconnect
       ws.send(JSON.stringify({ type: 'set_username', name: usernameRef.current }));
     };
 
@@ -177,18 +229,14 @@ export function RoomProvider({ children }) {
     ws.onclose = () => {
       setIsConnected(false);
       if (!mountedRef.current) return;
-      // Auto-reconnect after 3s
       reconnectTimerRef.current = setTimeout(() => {
         if (mountedRef.current) connect();
       }, 3000);
     };
 
-    ws.onerror = () => {
-      // Will trigger onclose
-    };
+    ws.onerror = () => {};
   }, [handleMessage]);
 
-  // ------ Initialize connection on mount ------
   useEffect(() => {
     mountedRef.current = true;
     connect();
@@ -199,7 +247,7 @@ export function RoomProvider({ children }) {
     };
   }, [connect]);
 
-  // ------ Fetch public rooms via REST as fallback (for the landing page) ------
+  // REST fallback for public rooms
   useEffect(() => {
     let cancelled = false;
     const fetchPublicRooms = async () => {
@@ -209,23 +257,16 @@ export function RoomProvider({ children }) {
           const data = await res.json();
           setPublicRooms(data);
         }
-      } catch {
-        // Backend may not be running, that's ok
-      }
+      } catch { /* backend may not be running */ }
     };
-
-    // Fetch once on mount
     fetchPublicRooms();
-
-    // Poll every 10s if WS isn't connected
     const interval = setInterval(() => {
       if (!isConnected) fetchPublicRooms();
     }, 10000);
-
     return () => { cancelled = true; clearInterval(interval); };
   }, [isConnected]);
 
-  // ------ Actions ------
+  // ---- Actions ----
 
   const setUsername = useCallback((name) => {
     const trimmed = (name || '').trim().slice(0, 30);
@@ -267,7 +308,36 @@ export function RoomProvider({ children }) {
     wsSend({ type: 'chat_message', text: trimmed });
   }, [wsSend]);
 
-  // Audience list (exclude host)
+  // ---- Host-only: broadcast audio source, sync, and actions ----
+
+  const setAudioSource = useCallback((audioSource, aiParams) => {
+    wsSend({ type: 'set_audio_source', audioSource, aiParams });
+  }, [wsSend]);
+
+  const sendSyncState = useCallback((currentTime, isPlaying, playbackSpeed) => {
+    wsSend({ type: 'sync_state', currentTime, isPlaying, playbackSpeed });
+  }, [wsSend]);
+
+  const broadcastHostAction = useCallback((action, payload) => {
+    wsSend({ type: 'host_action', action, payload });
+  }, [wsSend]);
+
+  // ---- Upload audio file (host only) ----
+  const uploadAudioFile = useCallback(async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch(getRestUrl('/rooms/upload-audio'), { method: 'POST', body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        return data; // {ok, fileUrl, filename}
+      }
+    } catch (err) {
+      console.error('[Room] Audio upload failed:', err);
+    }
+    return null;
+  }, []);
+
   const audience = members.filter(m => !m.isHost);
 
   const value = {
@@ -276,6 +346,10 @@ export function RoomProvider({ children }) {
     messages, sendMessage,
     createRoom, joinRoom, leaveRoom, togglePublic, updateRoomName, updateNowPlaying,
     isConnected,
+    // Audio sync
+    setAudioSource, sendSyncState, broadcastHostAction, uploadAudioFile,
+    audienceAudioSource, audienceAiParams, audienceSync,
+    onHostAction,
   };
 
   return <RoomContext.Provider value={value}>{children}</RoomContext.Provider>;

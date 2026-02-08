@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { fetchAIParams, fetchSoundCloudInfo, fetchSoundCloudDownload } from "./api/audiolyze";
 import VisualizerScene from './components/VisualizerScene';
@@ -12,6 +10,10 @@ import { useRoom } from './context/RoomContext';
 import { ENVIRONMENTS, pickRandomEnvironment } from './components/EnvironmentManager';
 import './App.css';
 import './styles/visualizer.css';
+import './styles/timeline.css';
+import './styles/stage-sidebar.css';
+import './styles/room-header.css';
+import './styles/room-chat.css';
 
 function App() {
   const [audioLoaded, setAudioLoaded] = useState(false);
@@ -58,7 +60,11 @@ function App() {
   const landingRef = useRef(null);
 
   // Room context
-  const { createRoom, updateNowPlaying, currentRoom, isHost, leaveRoom } = useRoom();
+  const { createRoom, updateNowPlaying, currentRoom, isHost, leaveRoom, publicRooms, joinRoom, 
+    broadcastHostAction, onHostAction, setAudioSource, sendSyncState, uploadAudioFile,
+    audienceAudioSource, audienceAiParams, audienceSync } = useRoom();
+  
+  const isAudience = !!currentRoom && !isHost;
 
   const handleFileSelect = async (file) => {
     if (file && (file.type === 'audio/mpeg' || file.type === 'video/mp4' || file.name.endsWith('.m4v'))) {
@@ -119,8 +125,9 @@ function App() {
 
       setLoadingMessage('Analyzing with AI...');
 
+      let params = null;
       try {
-        const params = await fetchAIParams(file);
+        params = await fetchAIParams(file);
         setLoadingMessage('Generating timeline...');
         setAiParams(params);
         await new Promise(resolve => setTimeout(resolve, 600));
@@ -142,6 +149,16 @@ function App() {
       // Create a room when audio loads
       createRoom();
       updateNowPlaying(np);
+
+      // Upload the audio file so audience can download it, then set the audio source
+      uploadAudioFile(file).then(uploadResult => {
+        if (uploadResult && uploadResult.ok) {
+          setAudioSource(
+            { type: 'upload', url: uploadResult.fileUrl, title: file.name },
+            params || null
+          );
+        }
+      }).catch(err => console.warn('Audio upload for sharing failed:', err));
     }
   };
 
@@ -162,18 +179,28 @@ function App() {
         setIsPlaying(false);
       }
     }
+    // Host broadcasts play/pause
+    if (isHost) {
+      broadcastHostAction('play_pause', { isPlaying: !isPlaying });
+    }
   };
 
   const handleSeek = (time) => {
     if (!audioRef.current) return;
     audioRef.current.currentTime = time;
     setCurrentTime(time);
+    if (isHost) {
+      broadcastHostAction('seek', { currentTime: time });
+    }
   };
 
   const handleSpeedChange = (speed) => {
     if (!audioRef.current) return;
     audioRef.current.playbackRate = speed;
     setPlaybackSpeed(speed);
+    if (isHost) {
+      broadcastHostAction('speed_change', { speed });
+    }
   };
 
   const handleReset = () => {
@@ -193,7 +220,13 @@ function App() {
   const handleShapeChanged = (newShape) => {
     if (newShape) setCurrentShape(newShape);
     if (!manualShapeChangeRef.current) {
-      setCurrentEnvironment(prev => pickRandomEnvironment(prev));
+      const newEnv = pickRandomEnvironment(currentEnvironment);
+      setCurrentEnvironment(newEnv);
+      // Host broadcasts auto shape + env change to audience
+      if (isHost) {
+        broadcastHostAction('shape_change', { shape: newShape });
+        broadcastHostAction('environment_change', { environment: newEnv });
+      }
     }
     manualShapeChangeRef.current = false;
   };
@@ -201,6 +234,9 @@ function App() {
   const handleManualShapeChange = (shape) => {
     manualShapeChangeRef.current = true;
     setCurrentShape(shape);
+    if (isHost) {
+      broadcastHostAction('shape_change', { shape });
+    }
   };
 
   const loadSoundCloudTrack = useCallback(async (blobUrl, title) => {
@@ -251,8 +287,9 @@ function App() {
 
     setLoadingMessage('Analyzing with AI...');
 
+    let params = null;
     try {
-      const params = await fetchAIParams(file);
+      params = await fetchAIParams(file);
       setLoadingMessage('Generating timeline...');
       setAiParams(params);
       await new Promise(resolve => setTimeout(resolve, 600));
@@ -274,7 +311,13 @@ function App() {
     // Create room if not already in one
     if (!currentRoom) createRoom();
     updateNowPlaying(np);
-  }, [currentRoom, createRoom, updateNowPlaying]);
+
+    // Broadcast audio source for audience (SoundCloud URL is already accessible)
+    setAudioSource(
+      { type: 'soundcloud', url: blobUrl, title },
+      params
+    );
+  }, [currentRoom, createRoom, updateNowPlaying, setAudioSource]);
 
   const playNextInQueue = useCallback(async () => {
     setPlaylistIndex(prev => {
@@ -451,6 +494,175 @@ function App() {
     };
   }, []);
 
+  // Subscribe to host actions for audience members
+  useEffect(() => {
+    if (!isAudience || !onHostAction) return;
+
+    const unsubscribe = onHostAction((msg) => {
+      const { action, payload } = msg;
+      console.log('[v0] Audience received host_action:', action, payload);
+      switch (action) {
+        case 'play_pause':
+          if (audioRef.current && payload.isPlaying !== undefined) {
+            if (payload.isPlaying) {
+              audioRef.current.play().catch(e => console.warn('Play failed:', e));
+            } else {
+              audioRef.current.pause();
+            }
+            setIsPlaying(payload.isPlaying);
+          }
+          break;
+        case 'seek':
+          if (audioRef.current && payload.currentTime !== undefined) {
+            audioRef.current.currentTime = payload.currentTime;
+            setCurrentTime(payload.currentTime);
+          }
+          break;
+        case 'speed_change':
+          if (audioRef.current && payload.speed !== undefined) {
+            audioRef.current.playbackRate = payload.speed;
+            setPlaybackSpeed(payload.speed);
+          }
+          break;
+        case 'shape_change':
+          if (payload.shape) {
+            setCurrentShape(payload.shape);
+          }
+          break;
+        case 'environment_change':
+          if (payload.environment) {
+            setCurrentEnvironment(payload.environment);
+          }
+          break;
+        case 'eq_change':
+          if (payload.audioTuning) setAudioTuning(payload.audioTuning);
+          if (payload.audioPlaybackTuning) setAudioPlaybackTuning(payload.audioPlaybackTuning);
+          break;
+        default:
+          break;
+      }
+    });
+
+    return unsubscribe;
+  }, [isAudience, onHostAction]);
+
+  // HOST: broadcast audio source to the server whenever audio loads
+  // Also send periodic sync state while playing
+  useEffect(() => {
+    if (!isHost || !currentRoom) return;
+    // Periodic sync: send playback position every 2s while playing
+    const syncInterval = setInterval(() => {
+      if (audioRef.current && isPlaying) {
+        sendSyncState(audioRef.current.currentTime, true, audioRef.current.playbackRate);
+      }
+    }, 2000);
+    return () => clearInterval(syncInterval);
+  }, [isHost, currentRoom, isPlaying, sendSyncState]);
+
+  // AUDIENCE: load the host's audio when we receive the audio source
+  const audienceLoadedSourceRef = useRef(null);
+  useEffect(() => {
+    if (!isAudience) return;
+    if (!audienceAudioSource) return;
+
+    // Avoid reloading the same source
+    const sourceKey = JSON.stringify(audienceAudioSource);
+    if (audienceLoadedSourceRef.current === sourceKey) return;
+    audienceLoadedSourceRef.current = sourceKey;
+
+    console.log('[v0] Audience loading audio source:', audienceAudioSource);
+
+    const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+    let audioUrl = audienceAudioSource.url;
+    // If relative URL, prepend API base
+    if (audioUrl && audioUrl.startsWith('/')) {
+      audioUrl = apiBase + audioUrl;
+    }
+
+    // Clean up previous audio
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (audioContextRef.current) { try { audioContextRef.current.close(); } catch {} audioContextRef.current = null; }
+    audioFiltersRef.current = null;
+
+    const audio = new Audio();
+    audio.crossOrigin = "anonymous";
+    audio.src = audioUrl;
+    audioRef.current = audio;
+
+    audio.addEventListener('loadedmetadata', () => { setDuration(audio.duration); });
+    audio.addEventListener('timeupdate', () => { setCurrentTime(audio.currentTime); });
+    audio.addEventListener('ended', () => { setIsPlaying(false); setCurrentTime(0); });
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const analyserNode = audioContext.createAnalyser();
+    analyserNode.fftSize = 2048;
+
+    const bassFilter = audioContext.createBiquadFilter();
+    bassFilter.type = 'lowshelf'; bassFilter.frequency.value = 200; bassFilter.gain.value = 0;
+    const midFilter = audioContext.createBiquadFilter();
+    midFilter.type = 'peaking'; midFilter.frequency.value = 1500; midFilter.Q.value = 1.0; midFilter.gain.value = 0;
+    const trebleFilter = audioContext.createBiquadFilter();
+    trebleFilter.type = 'highshelf'; trebleFilter.frequency.value = 4000; trebleFilter.gain.value = 0;
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = 1.0;
+
+    const source = audioContext.createMediaElementSource(audio);
+    source.connect(bassFilter);
+    bassFilter.connect(midFilter);
+    midFilter.connect(trebleFilter);
+    trebleFilter.connect(gainNode);
+    gainNode.connect(analyserNode);
+    analyserNode.connect(audioContext.destination);
+
+    audioContextRef.current = audioContext;
+    audioFiltersRef.current = { bassFilter, midFilter, trebleFilter, gainNode };
+    setAnalyser(analyserNode);
+
+    // Set AI params from host
+    if (audienceAiParams) {
+      setAiParams(audienceAiParams);
+    }
+
+    // Set now playing from audio source info
+    setNowPlaying({ title: audienceAudioSource.title || 'Unknown', source: audienceAudioSource.type || 'stream' });
+    setAudioLoaded(true);
+
+    // Apply the last known sync state (late-joiner catch up)
+    if (audienceSync) {
+      console.log('[v0] Applying initial sync:', audienceSync);
+      audio.currentTime = audienceSync.currentTime || 0;
+      audio.playbackRate = audienceSync.playbackSpeed || 1;
+      setPlaybackSpeed(audienceSync.playbackSpeed || 1);
+      setCurrentTime(audienceSync.currentTime || 0);
+      if (audienceSync.isPlaying) {
+        audio.play().catch(e => console.warn('Audience auto-play failed (browser policy):', e));
+        setIsPlaying(true);
+      }
+    }
+  }, [isAudience, audienceAudioSource, audienceAiParams, audienceSync]);
+
+  // AUDIENCE: apply periodic sync corrections from host
+  useEffect(() => {
+    if (!isAudience || !audienceSync || !audioRef.current) return;
+    const drift = Math.abs(audioRef.current.currentTime - audienceSync.currentTime);
+    if (drift > 2) {
+      // Snap to host position if drift is too large
+      audioRef.current.currentTime = audienceSync.currentTime;
+    }
+    // Match play state
+    if (audienceSync.isPlaying && audioRef.current.paused) {
+      audioRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    } else if (!audienceSync.isPlaying && !audioRef.current.paused) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    }
+    if (audienceSync.playbackSpeed && audioRef.current.playbackRate !== audienceSync.playbackSpeed) {
+      audioRef.current.playbackRate = audienceSync.playbackSpeed;
+      setPlaybackSpeed(audienceSync.playbackSpeed);
+    }
+  }, [isAudience, audienceSync]);
+
   const handleFileInput = (e) => {
     const file = e.target.files?.[0];
     if (file) handleFileSelect(file);
@@ -471,9 +683,6 @@ function App() {
       if (stageSection) stageSection.scrollIntoView({ behavior: 'smooth' });
     }
   };
-
-  // Room context for the Stage section
-  const { publicRooms, joinRoom } = useRoom();
 
   const handleJoinRoom = (room) => {
     joinRoom(room);
@@ -678,7 +887,10 @@ function App() {
         onSpeedChange={handleSpeedChange}
         onShapeChange={handleManualShapeChange}
         currentEnvironment={currentEnvironment}
-        onEnvironmentChange={setCurrentEnvironment}
+        onEnvironmentChange={(env) => {
+          setCurrentEnvironment(env);
+          if (isHost) broadcastHostAction('environment_change', { environment: env });
+        }}
         onReset={handleReset}
         nowPlaying={nowPlaying}
         playlistQueue={playlistQueue}
@@ -692,14 +904,17 @@ function App() {
         onAudioTuningChange={(val) => {
           setAudioTuning(val);
           if (tuningLinked) setAudioPlaybackTuning(val);
+          if (isHost) broadcastHostAction('eq_change', { audioTuning: val, audioPlaybackTuning: tuningLinked ? val : audioPlaybackTuning });
         }}
         audioPlaybackTuning={audioPlaybackTuning}
         onAudioPlaybackTuningChange={(val) => {
           setAudioPlaybackTuning(val);
           if (tuningLinked) setAudioTuning(val);
+          if (isHost) broadcastHostAction('eq_change', { audioTuning: tuningLinked ? val : audioTuning, audioPlaybackTuning: val });
         }}
         tuningLinked={tuningLinked}
         onTuningLinkedChange={setTuningLinked}
+        isAudience={isAudience}
       />
     </div>
   );
