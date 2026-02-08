@@ -221,6 +221,11 @@ function App() {
     if (resetVisualizerRef.current) resetVisualizerRef.current();
   };
 
+  const handleSkip = () => {
+    if (!isHost) return;
+    queueAdvance();
+  };
+
   const manualShapeChangeRef = useRef(false);
 
   const handleShapeChanged = (newShape) => {
@@ -1083,6 +1088,7 @@ function App() {
         playbackSpeed={playbackSpeed}
         currentShape={currentShape}
         onPlayPause={handlePlayPause}
+        onSkip={handleSkip}
         onSeek={handleSeek}
         onSpeedChange={handleSpeedChange}
         onShapeChange={handleManualShapeChange}

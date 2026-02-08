@@ -176,16 +176,14 @@
   cursor: not-allowed;
 }
 
-/* Smaller buttons for prev/next */
-.control-button.prev-button,
-.control-button.next-button {
+/* Smaller buttons for skip */
+.control-button.skip-button {
   width: 40px;
   height: 40px;
   background: rgba(255, 255, 255, 0.08);
 }
 
-.control-button.prev-button:hover:not(:disabled),
-.control-button.next-button:hover:not(:disabled) {
+.control-button.skip-button:hover {
   background: rgba(255, 255, 255, 0.15);
 }
 

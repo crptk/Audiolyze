@@ -11,12 +11,7 @@ export default function TimelineControls({
   isPlaying,
   playbackSpeed,
   onPlayPause,
-  onSeek,
-  onSpeedChange,
-  onShapeChange,
-  currentShape,
-  currentEnvironment,
-  onEnvironmentChange,
+  onSkip,
   onReset,
   nowPlaying = null,
   anaglyphEnabled = false,
@@ -442,6 +437,20 @@ export default function TimelineControls({
               </svg>
             )}
           </button>
+
+          {/* Skip to Next Button - host only */}
+          {!isAudience && onSkip && (
+            <button
+              className="control-button skip-button"
+              onClick={onSkip}
+              title="Skip to next in queue"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" />
+                <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" strokeWidth="2" />
+              </svg>
+            </button>
+          )}
 
         </div>
 
