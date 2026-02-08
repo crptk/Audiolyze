@@ -99,12 +99,16 @@ async def soundcloud_info(req: SoundCloudRequest):
                 "--flat-playlist",
                 "--dump-json",
                 "--no-warnings",
+                "--ignore-errors",
+                "--no-check-certificate",
+                "--extractor-args", "soundcloud:client_id=",
                 url,
             ],
             capture_output=True,
             text=True,
             timeout=30,
         )
+
 
         if result.returncode != 0:
             logger.error("yt-dlp info failed: %s", result.stderr)
