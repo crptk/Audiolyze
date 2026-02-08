@@ -87,6 +87,7 @@ async def soundcloud_info(req: SoundCloudRequest):
     Fetch metadata about a SoundCloud URL (track or playlist).
     Uses yt-dlp --flat-playlist --dump-json to get info without downloading.
     """
+    print(">>> soundcloud_info HIT", req.url)
     url = req.url.strip()
     logger.info("Fetching SoundCloud info for: %s", url)
     subprocess.run(["ffmpeg", "-version"], check=True)
