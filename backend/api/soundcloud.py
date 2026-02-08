@@ -23,6 +23,65 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 class SoundCloudRequest(BaseModel):
     url: str
 
+def resolve_full_track(url: str) -> dict:
+    """
+    Fetch full metadata for a single SoundCloud track URL.
+    Used to fix flat-playlist entries missing title/artist.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "yt-dlp",
+                "--dump-json",
+                "--no-playlist",
+                "--no-warnings",
+                url,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if result.returncode != 0:
+            return {}
+        return json.loads(result.stdout)
+    except Exception:
+        return {}
+
+
+def normalize_track(entry: dict):
+    # If this is a flat-playlist entry, resolve full metadata
+    if (not entry.get("title") or entry.get("title") == "Unknown Track") and entry.get("url"):
+        full = resolve_full_track(entry["url"])
+        if full:
+            entry = full
+
+    artist = (
+        entry.get("artist")
+        or entry.get("uploader")
+        or entry.get("uploader_id")
+        or (entry.get("artists", [{}])[0].get("name") if entry.get("artists") else None)
+        or "Unknown Artist"
+    )
+
+    title = (
+        entry.get("title")
+        or entry.get("track")
+        or "Unknown Track"
+    )
+
+    return {
+        "id": entry.get("id"),
+        "title": title,
+        "artist": artist,
+        "url": entry.get("webpage_url") or entry.get("url"),
+        "duration": entry.get("duration"),
+        "thumbnail": (
+            entry.get("thumbnails", [{}])[-1].get("url")
+            if entry.get("thumbnails") else None
+        )
+    }
+
+
 @router.post("/soundcloud/info")
 async def soundcloud_info(req: SoundCloudRequest):
     """
@@ -64,33 +123,24 @@ async def soundcloud_info(req: SoundCloudRequest):
             return {"ok": False, "error": "No tracks found at this URL."}
 
         if len(entries) == 1:
-            # Single track
-            entry = entries[0]
+            track = normalize_track(entries[0])
             return {
                 "ok": True,
                 "type": "track",
-                "title": entry.get("title", "Unknown Track"),
-                "url": entry.get("url", url),
-                "duration": entry.get("duration"),
-                "uploader": entry.get("uploader", ""),
+                "track": track,
             }
-        else:
-            # Playlist
-            tracks = []
-            for entry in entries:
-                tracks.append({
-                    "title": entry.get("title", "Unknown Track"),
-                    "url": entry.get("url", ""),
-                    "duration": entry.get("duration"),
-                    "uploader": entry.get("uploader", ""),
-                })
 
-            return {
-                "ok": True,
-                "type": "playlist",
-                "title": f"Playlist ({len(tracks)} tracks)",
-                "tracks": tracks,
-            }
+        # Playlist
+        tracks = [normalize_track(e) for e in entries]
+
+        return {
+            "ok": True,
+            "type": "playlist",
+            "title": entries[0].get("album") or "SoundCloud Playlist",
+            "trackCount": len(tracks),
+            "tracks": tracks,
+        }
+
 
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "Request timed out"}

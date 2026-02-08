@@ -226,6 +226,21 @@ function App() {
     queueAdvance();
   };
 
+  const formatTrackTitle = (track) => {
+    const title =
+      track.track ||
+      track.title ||
+      'Unknown Track';
+
+    const artist =
+      track.artist ||
+      track.uploader ||
+      track.creator ||
+      '';
+
+    return artist ? `${title} — ${artist}` : title;
+  };
+
   const manualShapeChangeRef = useRef(false);
 
   const handleShapeChanged = (newShape) => {
@@ -252,7 +267,7 @@ function App() {
 
   const loadSoundCloudTrack = useCallback(async (blobUrl, title) => {
     setIsLoading(true);
-    setLoadingMessage('Preparing audio...');
+    setLoadingMessage(`Downloading: ${title}...`);
 
     const response = await fetch(blobUrl);
     const blob = await response.blob();
@@ -332,11 +347,6 @@ function App() {
   }, [currentRoom, createRoom, updateNowPlaying, setAudioSource, isHost, queueAdvance]);
 
 
-
-
-
-
-
   const handleSoundCloudSubmit = async () => {
     if (!soundcloudUrl.trim()) return;
     setSoundcloudError('');
@@ -352,12 +362,16 @@ function App() {
 
       if (info.type === 'playlist') {
         const tracks = info.tracks || [];
+        console.log('[v0] Received playlist with tracks:', tracks);
+        console.log('[v0] First track:', tracks[0]);
         if (tracks.length === 0) {
           setSoundcloudError('Playlist is empty');
           setIsLoading(false); setLoadingMessage(''); return;
         }
         // Download and play the first track immediately
         const firstTrack = tracks[0];
+        const displayTitle = formatTrackTitle(firstTrack);
+        console.log('[v0] First track title:', displayTitle);
         setLoadingMessage(`Downloading: ${firstTrack.title}...`);
         const downloadData = await fetchSoundCloudDownload(firstTrack.url);
         if (!downloadData.ok) {
@@ -366,10 +380,15 @@ function App() {
         }
         const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
         const blobUrl = `${apiBase}${downloadData.file_url}`;
-        await loadSoundCloudTrack(blobUrl, firstTrack.title);
+        await loadSoundCloudTrack(blobUrl, displayTitle);
+
+
         // Add remaining tracks to the server-side queue
         for (let i = 1; i < tracks.length; i++) {
-          queueAdd(tracks[i].title, 'soundcloud', tracks[i].url, tracks[i].url);
+          console.log(`[v0] Adding track ${i} to queue:`, tracks[i].title);
+          const displayTitle = formatTrackTitle(tracks[i]);
+          queueAdd(displayTitle, 'soundcloud', tracks[i].url, tracks[i].url);
+
         }
       } else {
         setLoadingMessage(`Downloading: ${info.title}...`);
