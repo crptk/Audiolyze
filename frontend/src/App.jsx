@@ -747,8 +747,34 @@ function App() {
       setCurrentShape(null);
 
       if (item.source === 'soundcloud' && item.url) {
+        // Check if URL is a backend blob URL or a raw SoundCloud URL
         let blobUrl = item.url;
-        if (blobUrl.startsWith('/')) blobUrl = apiBase + blobUrl;
+        if (blobUrl.startsWith('http://') || blobUrl.startsWith('https://')) {
+          if (blobUrl.includes('soundcloud.com')) {
+            // Raw SoundCloud URL - download it first
+            try {
+              setIsLoading(true);
+              setLoadingMessage(`Downloading: ${item.title}...`);
+              const downloadData = await fetchSoundCloudDownload(blobUrl);
+              if (!downloadData.ok) {
+                console.error('Failed to download SoundCloud track:', downloadData.error);
+                setIsLoading(false);
+                setLoadingMessage('');
+                return;
+              }
+              blobUrl = `${apiBase}${downloadData.file_url}`;
+              setIsLoading(false);
+              setLoadingMessage('');
+            } catch (e) {
+              console.error('Error downloading SoundCloud track:', e);
+              setIsLoading(false);
+              setLoadingMessage('');
+              return;
+            }
+          }
+        } else if (blobUrl.startsWith('/')) {
+          blobUrl = apiBase + blobUrl;
+        }
         await loadSoundCloudTrack(blobUrl, item.title);
       } else if (item.url) {
         // Uploaded file URL
@@ -808,7 +834,7 @@ function App() {
       }
     });
     return unsubscribe;
-  }, [isHost, onQueuePlayNext, loadSoundCloudTrack, queueAdvance, updateNowPlaying]);
+  }, [isHost, onQueuePlayNext, loadSoundCloudTrack, queueAdvance, updateNowPlaying, fetchSoundCloudDownload]);
 
   const handleFileInput = (e) => {
     const file = e.target.files?.[0];
