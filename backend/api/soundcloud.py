@@ -85,24 +85,19 @@ def normalize_track(entry: dict):
 async def soundcloud_info(req: SoundCloudRequest):
     """
     Fetch metadata about a SoundCloud URL (track or playlist).
-    Uses yt-dlp --flat-playlist --dump-json to get info without downloading.
+    Correctly handles single tracks by NOT using --flat-playlist.
     """
-    print(">>> soundcloud_info HIT", req.url)
     url = req.url.strip()
     logger.info("Fetching SoundCloud info for: %s", url)
-    subprocess.run(["ffmpeg", "-version"], check=True)
-    subprocess.run(["ffprobe", "-version"], check=True)
+
     try:
-        # First try flat playlist to detect if it's a playlist
-        result = subprocess.run(
+        # First attempt: flat playlist (cheap + fast)
+        flat = subprocess.run(
             [
                 "yt-dlp",
                 "--flat-playlist",
                 "--dump-json",
-                "--skip-download",
                 "--no-warnings",
-                "--extract-audio", "false",
-                "--audio-quality", "0",
                 url,
             ],
             capture_output=True,
@@ -110,14 +105,44 @@ async def soundcloud_info(req: SoundCloudRequest):
             timeout=30,
         )
 
+        if flat.returncode != 0:
+            logger.error("yt-dlp flat info failed: %s", flat.stderr)
+            return {"ok": False, "error": "Failed to fetch SoundCloud info"}
 
+        lines = [l for l in flat.stdout.splitlines() if l.strip()]
 
-        if result.returncode != 0:
-            logger.error("yt-dlp info failed: %s", result.stderr)
-            return {"ok": False, "error": "Failed to fetch SoundCloud info. Check the URL."}
+        # 🎯 SINGLE TRACK
+        if len(lines) == 1:
+            # Re-fetch FULL metadata (no flat mode)
+            full = subprocess.run(
+                [
+                    "yt-dlp",
+                    "--dump-json",
+                    "--no-playlist",
+                    "--no-warnings",
+                    url,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
 
-        # Parse JSON lines (one per track in a playlist, or one for a single track)
-        lines = [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+            if full.returncode != 0:
+                logger.error("yt-dlp single-track fetch failed: %s", full.stderr)
+                return {"ok": False, "error": "Failed to fetch track metadata"}
+
+            entry = json.loads(full.stdout)
+            track = normalize_track(entry)
+
+            return {
+                "ok": True,
+                "type": "track",
+                "title": track["title"],
+                "artist": track["artist"],
+                "track": track,
+            }
+
+        # 🎵 PLAYLIST
         entries = []
         for line in lines:
             try:
@@ -125,18 +150,6 @@ async def soundcloud_info(req: SoundCloudRequest):
             except json.JSONDecodeError:
                 continue
 
-        if len(entries) == 0:
-            return {"ok": False, "error": "No tracks found at this URL."}
-
-        if len(entries) == 1:
-            track = normalize_track(entries[0])
-            return {
-                "ok": True,
-                "type": "track",
-                "track": track,
-            }
-
-        # Playlist
         tracks = [normalize_track(e) for e in entries]
 
         return {
@@ -147,11 +160,10 @@ async def soundcloud_info(req: SoundCloudRequest):
             "tracks": tracks,
         }
 
-
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "Request timed out"}
     except FileNotFoundError:
-        return {"ok": False, "error": "yt-dlp not found. Please install it: pip install yt-dlp"}
+        return {"ok": False, "error": "yt-dlp not found"}
     except Exception as e:
         logger.exception("SoundCloud info error")
         return {"ok": False, "error": str(e)}

@@ -1023,7 +1023,6 @@ async def _leave_visited_room(user: User):
 
 
 async def _destroy_hosted_room(user: User):
-    """Destroy a room the user is hosting."""
     rid = user.hosted_room_id
     if not rid or rid not in rooms:
         user.hosted_room_id = None
@@ -1031,32 +1030,23 @@ async def _destroy_hosted_room(user: User):
 
     room = rooms[rid]
 
-    # Clean up uploaded audio files
-    if room.audio_source and room.audio_source.get("type") == "upload":
-        file_url = room.audio_source.get("url", "")
-        filename = file_url.split("/")[-1] if file_url else ""
-        filepath = os.path.join(UPLOAD_DIR, filename)
-        if os.path.isfile(filepath):
-            try:
-                os.remove(filepath)
-            except Exception:
-                pass
-
-    # Notify all members the room is closed
+    # Notify ALL members INCLUDING HOST
     for member in list(room.members.values()):
-        if member.id != user.id:
-            member.room_id = None
-            member.is_host = False
-            await _send(member.ws, {"type": "room_closed", "reason": "Host ended the stage"})
+        member.room_id = None
+        member.is_host = False
+        await _send(member.ws, {
+            "type": "room_closed",
+            "reason": "Host ended the stage"
+        })
 
     rooms.pop(rid, None)
-    user.hosted_room_id = None
 
-    if user.room_id == rid:
-        user.room_id = None
-        user.is_host = False
+    user.hosted_room_id = None
+    user.room_id = None
+    user.is_host = False
 
     await _broadcast_public_rooms()
+
 
 
 async def _leave_room(user: User):

@@ -6,7 +6,7 @@ export default function RoomHeader({ visible }) {
   const {
     currentRoom, isHost, isPublic, roomName, togglePublic,
     updateRoomName, leaveRoom, audience, username, setUsername,
-    isVisiting, hostedRoom,
+    isVisiting, hostedRoom, endHostedRoom
   } = useRoom();
 
   // Room name editing
@@ -179,17 +179,43 @@ export default function RoomHeader({ visible }) {
           </button>
         )}
 
-        {/* Leave room */}
-        {!isHost && (
-          <button className="room-leave-btn" onClick={leaveRoom} title="Leave Stage">
+        {/* Host: End room */}
+        {isHost && (
+        <button
+            className="room-end-btn"
+            onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[UI] End Stage clicked');
+            setTimeout(() => {
+                endHostedRoom();
+            }, 0);
+            }}
+
+
+            title="End stage for everyone"
+        >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
+            <circle cx="12" cy="12" r="10" />
+            <line x1="8" y1="8" x2="16" y2="16" />
+            <line x1="16" y1="8" x2="8" y2="16" />
+            </svg>
+            <span>End Stage</span>
+        </button>
+        )}
+
+        {/* Audience: Leave room */}
+        {!isHost && (
+        <button className="room-leave-btn" onClick={leaveRoom} title="Leave Stage">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
             <span>Leave</span>
-          </button>
+        </button>
         )}
+
       </div>
     </div>
   );

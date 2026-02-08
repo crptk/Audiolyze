@@ -253,7 +253,7 @@ export function RoomProvider({ children }) {
         // If the closed room was our hosted room, clear that too
         setHostedRoom(null);
         setIsVisiting(false);
-        setIsOnMenu(false);
+        setIsOnMenu(true);
         break;
 
       case 'left_room':
@@ -435,6 +435,7 @@ export function RoomProvider({ children }) {
 
   const endHostedRoom = useCallback(() => {
     wsSend({ type: 'end_room' });
+    console.log('[RoomContext] sending end_room');
   }, [wsSend]);
 
   const togglePublic = useCallback(() => {
