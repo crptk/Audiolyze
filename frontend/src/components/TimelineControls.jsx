@@ -25,6 +25,10 @@ export default function TimelineControls({
   tuningLinked = true,
   onTuningLinkedChange,
   isAudience = false,
+  currentShape = null,
+  onShapeChange = null,
+  currentEnvironment = null,
+  onEnvironmentChange = null,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [showManualControls, setShowManualControls] = useState(false);
